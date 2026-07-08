@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.models import (
+    ChapterResponse,
+    ChapterVerse,
     ChatRequest,
     ChatResponse,
     PassageResult,
@@ -19,7 +21,7 @@ from app.models import (
 import requests
 
 from app.rag import GEMINI_MODEL, MODEL, OLLAMA_MODEL, OLLAMA_URL, PROVIDER, answer_question
-from app.retrieval import search_passages
+from app.retrieval import get_chapter, search_passages
 
 app = FastAPI(title="Open Bible Study AI")
 
@@ -97,6 +99,21 @@ def search(req: SearchRequest):
             detail=f"Search index not available yet. Run scripts/build_index.py first. ({e})",
         )
     return SearchResponse(results=[PassageResult(**r) for r in results])
+
+
+@app.get("/api/chapter", response_model=ChapterResponse)
+def chapter(book: str, chapter: int):
+    verses = get_chapter(book, chapter)
+    if not verses:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No verses found for {book} {chapter}.",
+        )
+    return ChapterResponse(
+        book=book,
+        chapter=chapter,
+        verses=[ChapterVerse(**v) for v in verses],
+    )
 
 
 @app.post("/api/chat", response_model=ChatResponse)
