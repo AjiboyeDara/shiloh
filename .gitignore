@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.env
+data/
+!data/.gitkeep
+venv/
+.venv/
+*.egg-info/
+.DS_Store
+node_modules/

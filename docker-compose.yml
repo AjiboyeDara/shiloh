@@ -1,0 +1,10 @@
+services:
+  bible-study-ai:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - CHAT_MODEL=${CHAT_MODEL:-claude-sonnet-4-5}
+    volumes:
+      - ./resources:/app/resources
