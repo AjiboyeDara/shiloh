@@ -2,7 +2,7 @@
 Generation layer: takes a user question + retrieved passages and produces
 a study-oriented answer via an LLM. Supports three providers, selected by
 the LLM_PROVIDER env var:
-  - "ollama" (default): a local model served by Ollama — free, no API key.
+  - "ollama" (default): a local model served by Ollama, free, no API key.
   - "gemini": the Google Gemini API (requires GEMINI_API_KEY; has a free tier).
   - "anthropic": the Anthropic API (requires ANTHROPIC_API_KEY).
 """
@@ -33,7 +33,7 @@ audience, genre) but distinguish that from the text itself.
 Where a question touches a doctrinally contested point, present the \
 Bible's material and note that interpretations vary across traditions, \
 rather than asserting one reading as the only correct one.
-- Keep answers focused and readable — this is for personal study, not a \
+- Keep answers focused and readable. This is for personal study, not a \
 sermon.
 """
 

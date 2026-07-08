@@ -29,7 +29,8 @@ def get_collection():
 
 
 def search_passages(query: str, top_k: int = 6):
-    """Returns a list of dicts: reference, text, book, chapter."""
+    """Returns a list of dicts: reference, text, book, chapter,
+    verse_start, verse_end."""
     model = get_embedder()
     collection = get_collection()
 
@@ -43,8 +44,32 @@ def search_passages(query: str, top_k: int = 6):
             "text": doc,
             "book": meta["book"],
             "chapter": meta["chapter"],
+            "verse_start": meta.get("verse_start"),
+            "verse_end": meta.get("verse_end"),
         })
     return passages
+
+
+VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
+
+
+@lru_cache(maxsize=1)
+def _load_all_verses():
+    """Load the full KJV verse list once and index it by (book, chapter)."""
+    with open(VERSES_PATH, encoding="utf-8") as f:
+        verses = json.load(f)
+    by_chapter = {}
+    for v in verses:
+        by_chapter.setdefault((v["book"], v["chapter"]), []).append(v)
+    for vlist in by_chapter.values():
+        vlist.sort(key=lambda v: v["verse"])
+    return by_chapter
+
+
+def get_chapter(book: str, chapter: int):
+    """Return the ordered verses (verse, text) for a given book + chapter."""
+    vlist = _load_all_verses().get((book, chapter), [])
+    return [{"verse": v["verse"], "text": v["text"]} for v in vlist]
 
 
 def load_cross_references(book: str, chapter: int, verse: int):
