@@ -1,0 +1,8 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+anthropic>=0.34
+chromadb>=0.5
+sentence-transformers>=3.0
+pydantic>=2.6
+python-dotenv>=1.0
+requests>=2.31
