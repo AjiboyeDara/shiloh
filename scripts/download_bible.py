@@ -49,7 +49,7 @@ def normalize():
     if len(books) != len(BOOK_NAMES):
         raise ValueError(
             f"Expected {len(BOOK_NAMES)} books, source has {len(books)}. "
-            "The source format may have changed — check BOOK_NAMES ordering."
+            "The source format may have changed. Check BOOK_NAMES ordering."
         )
 
     verses = []

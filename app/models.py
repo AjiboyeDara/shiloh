@@ -21,6 +21,19 @@ class PassageResult(BaseModel):
     text: str
     book: str
     chapter: int
+    verse_start: Optional[int] = None
+    verse_end: Optional[int] = None
+
+
+class ChapterVerse(BaseModel):
+    verse: int
+    text: str
+
+
+class ChapterResponse(BaseModel):
+    book: str
+    chapter: int
+    verses: List[ChapterVerse]
 
 
 class ChatResponse(BaseModel):
