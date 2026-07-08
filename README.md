@@ -2,7 +2,7 @@
 
 An open-source, self-hostable AI chat assistant for Bible study. It answers
 questions by retrieving relevant King James Version passages first (RAG),
-then generating a grounded answer — with the source passages always shown
+then generating a grounded answer, with the source passages always shown
 alongside the response so you can check the text yourself.
 
 ## How it works
@@ -23,12 +23,12 @@ question ──▶ embed query ──▶ search local vector index ──▶ top
 - **Generation**: retrieved passages + your question go to an LLM to produce
   the answer. Two providers are supported out of the box, selected via
   `LLM_PROVIDER` in `.env`: a free local model via [Ollama](https://ollama.com)
-  (the default — no API key, nothing leaves your machine) or the Anthropic
+  (the default, with no API key so nothing leaves your machine) or the Anthropic
   API. The generation call is isolated in `app/rag.py` so adding another
   provider is easy.
 - **Extras**: cross-references, chapter commentary, and Strong's word
-  definitions are supported as optional local resource files (see below) —
-  none are bundled by default since their best public-domain sources aren't
+  definitions are supported as optional local resource files (see below).
+  None are bundled by default since their best public-domain sources aren't
   reliably mirrored on a single site, but wiring them in is a couple of
   JSON files, and `app/retrieval.py` already knows how to read them.
 
@@ -52,7 +52,7 @@ python scripts/build_index.py      # builds the local embedding index (a few min
 uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000 — the chat UI is served directly by the API.
+Open http://localhost:8000 to use the chat UI, which is served directly by the API.
 
 ## Quickstart (Docker)
 
@@ -67,7 +67,7 @@ the container is ready to serve as soon as it starts.
 ## Adding cross-references, commentary, or Strong's data
 
 These are optional and off by default. Drop in a file at any of these paths
-and the app will pick it up automatically — no code changes needed:
+and the app will pick it up automatically, with no code changes needed:
 
 | Resource | Path | Format |
 |---|---|---|
@@ -111,7 +111,7 @@ Set `LLM_PROVIDER` in `.env` to `ollama` (default; free local model, configure
 with `OLLAMA_MODEL`/`OLLAMA_URL`) or `anthropic` (requires `ANTHROPIC_API_KEY`,
 configure the model with `CHAT_MODEL`). Each provider is a single small
 function in `app/rag.py` (`_generate_ollama` / `_generate_anthropic`), so
-adding another is a few lines — the retrieval and prompt-building logic is
+adding another is a few lines, since the retrieval and prompt-building logic is
 provider-agnostic.
 
 ## Swapping the translation

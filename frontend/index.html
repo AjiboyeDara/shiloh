@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Shiloh — Scripture-Grounded Study</title>
+<title>Shiloh: Scripture-Grounded Study</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cardo:ital,wght@0,400;0,700;1,400&family=Hanken+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    /* Light — white + #90D5FF, navy ink */
+    /* Light: white + #90D5FF, navy ink */
     --bg: #ffffff;
     --bg-side: #fdfefe;
     --ink: #0d3a5c;
@@ -28,7 +28,7 @@
     --scroll: #cddce8;
   }
   [data-theme="dark"] {
-    /* Sanctuary — dark navy #003759 */
+    /* Sanctuary: dark navy #003759 */
     --bg: #003759;
     --bg-side: #003253;
     --ink: #eaf3fa;
@@ -87,6 +87,7 @@
   }
   .brand .name { display: flex; flex-direction: column; gap: 3px; }
   .brand .mark {
+    font-family: 'Hanken Grotesk', sans-serif;
     font-weight: 700;
     font-size: 22px;
     letter-spacing: 0.01em;
@@ -110,7 +111,7 @@
     color: var(--ink);
     background: transparent;
     border: 1px solid var(--card-border);
-    border-radius: 999px;
+    border-radius: 3px;
     padding: 8px 16px;
     cursor: pointer;
     max-width: 230px;
@@ -131,7 +132,7 @@
     background: transparent;
     border: 1px solid var(--card-border);
     color: var(--ink-soft);
-    border-radius: 999px;
+    border-radius: 3px;
     width: 36px; height: 36px;
     display: inline-flex;
     align-items: center;
@@ -173,7 +174,7 @@
     align-self: flex-end;
     background: var(--bubble-user);
     color: var(--bubble-user-ink);
-    border-radius: 16px 16px 4px 16px;
+    border-radius: 3px;
     padding: 14px 20px;
     font-size: 15.5px;
     line-height: 1.6;
@@ -227,7 +228,7 @@
     background: transparent;
     color: var(--accent);
     border: 1px solid var(--chip-border);
-    border-radius: 999px;
+    border-radius: 3px;
     padding: 3px 10px;
     letter-spacing: 0.02em;
     cursor: pointer;
@@ -284,7 +285,7 @@
     border: 1px solid var(--chip-border);
     color: var(--ink);
     padding: 9px 18px;
-    border-radius: 999px;
+    border-radius: 3px;
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s;
   }
@@ -304,7 +305,7 @@
     font-size: 15px;
     padding: 15px 20px;
     border: 1px solid var(--card-border);
-    border-radius: 14px;
+    border-radius: 4px;
     background: var(--field-bg);
     color: var(--ink);
     min-height: 52px;
@@ -323,13 +324,28 @@
     background: var(--accent-bright);
     color: var(--btn-ink);
     border: none;
-    border-radius: 14px;
+    border-radius: 4px;
     padding: 15px 26px;
     cursor: pointer;
     transition: filter 0.15s;
   }
   .composer button:disabled { opacity: 0.5; cursor: default; }
   .composer button:not(:disabled):hover { filter: brightness(1.05); }
+  .composer button.stop {
+    background: #e05b5b;
+    color: #fff;
+    opacity: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .composer button.stop::before {
+    content: "";
+    width: 11px; height: 11px;
+    background: currentColor;
+    border-radius: 2px;
+  }
 
   /* ── Passages sidebar ───────────────────── */
   .passages {
@@ -348,7 +364,7 @@
   .passage-card {
     border: 1px solid var(--card-border);
     background: var(--card-bg);
-    border-radius: 14px;
+    border-radius: 4px;
     padding: 18px 20px;
     margin-bottom: 16px;
     transition: border-color 0.2s, box-shadow 0.2s;
@@ -381,7 +397,7 @@
     text-transform: uppercase;
     color: var(--ink-soft);
     border: 1px solid var(--chip-border);
-    border-radius: 999px;
+    border-radius: 3px;
     padding: 3px 10px;
     white-space: nowrap;
   }
@@ -397,6 +413,98 @@
     font-size: 10px;
     margin-right: 2px;
   }
+
+  /* ── Read full chapter (expand within card) ──── */
+  .chapter-toggle {
+    margin-top: 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    transform: translateY(-2px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+  }
+  /* Reveal on hover, keyboard focus, or when the card is expanded, so it
+     works on touch devices (tap) as well as mouse/keyboard. */
+  .passage-card:hover .chapter-toggle,
+  .passage-card:focus-within .chapter-toggle,
+  .chapter-toggle:focus-visible,
+  .passage-card.expanded .chapter-toggle {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .chapter-toggle .chev {
+    font-size: 9px;
+    transition: transform 0.2s ease;
+  }
+  .passage-card.expanded .chapter-toggle .chev { transform: rotate(180deg); }
+
+  .chapter-panel {
+    margin-top: 14px;
+    border-top: 1px solid var(--rule);
+    padding-top: 12px;
+    max-height: 340px;
+    overflow-y: auto;
+    animation: rise 0.25s ease both;
+  }
+  .chapter-panel .chapter-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin: 0 0 12px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--field-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 4px;
+    padding: 8px 12px;
+    box-shadow: 0 4px 10px -6px rgba(0, 0, 0, 0.35);
+  }
+  .chapter-panel .cv {
+    font-family: 'Cardo', serif;
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: var(--ink);
+    scroll-margin-top: 50px;
+  }
+  .chapter-panel .cv .vn {
+    font-family: 'Inter', sans-serif;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 600;
+    margin-right: 4px;
+    vertical-align: super;
+  }
+  .chapter-panel .cv.hl {
+    background: var(--card-bg-alt);
+    box-shadow: -6px 0 0 var(--accent-bright);
+    border-radius: 2px;
+    padding: 2px 4px 2px 6px;
+    margin-left: -6px;
+  }
+  [data-theme="dark"] .chapter-panel .cv.hl {
+    background: rgba(144, 213, 255, 0.08);
+  }
+  .chapter-panel .chapter-loading,
+  .chapter-panel .chapter-error {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink-faint);
+    padding: 8px 0;
+  }
   .passages .placeholder {
     text-align: center;
     padding-top: 34vh;
@@ -406,7 +514,7 @@
     width: 44px; height: 44px;
     margin: 0 auto 20px;
     border: 1.5px dashed var(--chip-border);
-    border-radius: 10px;
+    border-radius: 3px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -431,6 +539,31 @@
   .typing span:nth-child(3) { animation-delay: 0.3s; }
   @keyframes bounce { 0%, 80%, 100% { transform: translateY(0); opacity: 0.4; } 40% { transform: translateY(-4px); opacity: 1; } }
 
+  /* Rotating biblical status words while thinking */
+  .thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 0;
+    font-size: 16px;
+    font-style: italic;
+    color: var(--ink-soft);
+  }
+  .thinking .tw {
+    animation: shimmer 1.7s ease-in-out infinite;
+  }
+  .thinking .tw.swap { animation: wordfade 0.45s ease both; }
+  .thinking .td { display: inline-flex; gap: 4px; }
+  .thinking .td span {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--ink-soft);
+    animation: bounce 1.2s infinite ease-in-out;
+  }
+  .thinking .td span:nth-child(2) { animation-delay: 0.15s; }
+  .thinking .td span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes shimmer { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+  @keyframes wordfade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+
   /* ── Quality floor ──────────────────────── */
   button:focus-visible, select:focus-visible, .ref-chip:focus-visible {
     outline: 2px solid var(--accent);
@@ -445,7 +578,7 @@
   }
 
   ::-webkit-scrollbar { width: 10px; }
-  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 2px; }
 </style>
 </head>
 <body>
@@ -472,8 +605,8 @@
       <div class="messages" id="messages">
         <div class="empty-state" id="emptyState">
           <div class="drop">&#10013;</div>
-          <h1>Come, let&rsquo;s open the Word together.</h1>
-          <p>Bring whatever you&rsquo;re wondering about — a verse that puzzles you, a theme you&rsquo;re tracing, a question you&rsquo;ve been carrying. We&rsquo;ll start from the scriptures themselves.</p>
+          <h1>Search the scriptures.</h1>
+          <p>Ask about a passage, a theme, or a book. Shiloh retrieves the relevant verses first, then answers from them.</p>
         </div>
       </div>
       <div class="composer-zone">
@@ -495,7 +628,7 @@
       <div id="passageList">
         <div class="placeholder">
           <div class="num-box">1</div>
-          <p>Passages Shiloh grounds its answer in will appear here — numbered to match the citations in the reply.</p>
+          <p>Passages Shiloh grounds its answer in will appear here, numbered to match the citations in the reply.</p>
         </div>
       </div>
     </aside>
@@ -592,10 +725,11 @@ input.addEventListener('keydown', (e) => {
   }
 });
 
-function addMessage(role, contentHtml, refs) {
+function addMessage(role, contentHtml, refs, setIdx) {
   if (emptyState) emptyState.remove();
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + role;
+  if (setIdx !== undefined) wrap.dataset.set = setIdx;
   if (role === 'user') {
     wrap.innerHTML = contentHtml;
   } else {
@@ -611,18 +745,97 @@ function addMessage(role, contentHtml, refs) {
   return wrap;
 }
 
-function renderPassages(passages) {
+// Each assistant reply's passages are kept here; message elements carry the
+// index in data-set so citations always resolve against their own passages.
+const passageSets = [];
+let shownSet = -1;
+
+function renderPassages(setIdx) {
+  const passages = passageSets[setIdx];
   if (!passages || !passages.length) return;
+  shownSet = setIdx;
   passageList.innerHTML = passages.map((p, i) => `
-    <div class="passage-card" data-n="${i + 1}" style="animation-delay: ${i * 60}ms">
+    <div class="passage-card" data-n="${i + 1}"
+         data-book="${escapeHtml(p.book)}" data-chapter="${p.chapter}"
+         data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
+         style="animation-delay: ${i * 60}ms">
       <div class="card-head">
         <div class="ref">${p.reference}</div>
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
       </div>
       <div class="verse-text">${p.text}</div>
+      <button type="button" class="chapter-toggle" aria-expanded="false">
+        <span class="label">Read full chapter</span>
+        <span class="chev">&#9660;</span>
+      </button>
     </div>
   `).join('');
 }
+
+// Expand a passage card in place to show its full chapter, scrollable, with
+// the retrieved verses highlighted. Only one card is expanded at a time.
+async function toggleChapter(card) {
+  const btn = card.querySelector('.chapter-toggle');
+  const existing = card.querySelector('.chapter-panel');
+  if (existing) {
+    existing.remove();
+    card.classList.remove('expanded');
+    btn.setAttribute('aria-expanded', 'false');
+    btn.querySelector('.label').textContent = 'Read full chapter';
+    return;
+  }
+
+  // Collapse any other open chapter first.
+  passageList.querySelectorAll('.passage-card.expanded').forEach(c => {
+    if (c !== card) {
+      c.querySelector('.chapter-panel')?.remove();
+      c.classList.remove('expanded');
+      const b = c.querySelector('.chapter-toggle');
+      b.setAttribute('aria-expanded', 'false');
+      b.querySelector('.label').textContent = 'Read full chapter';
+    }
+  });
+
+  const book = card.dataset.book;
+  const chapter = card.dataset.chapter;
+  const vStart = Number(card.dataset.vstart) || null;
+  const vEnd = Number(card.dataset.vend) || vStart;
+
+  const panel = document.createElement('div');
+  panel.className = 'chapter-panel';
+  panel.innerHTML = '<div class="chapter-loading">Loading chapter…</div>';
+  card.appendChild(panel);
+  card.classList.add('expanded');
+  btn.setAttribute('aria-expanded', 'true');
+  btn.querySelector('.label').textContent = 'Hide full chapter';
+
+  try {
+    const res = await fetch(`/api/chapter?book=${encodeURIComponent(book)}&chapter=${encodeURIComponent(chapter)}`);
+    if (!res.ok) throw new Error('Chapter not found');
+    const data = await res.json();
+    const versesHtml = data.verses.map(v => {
+      const hl = vStart && v.verse >= vStart && v.verse <= vEnd ? ' hl' : '';
+      return `<div class="cv${hl}" data-v="${v.verse}"><span class="vn">${v.verse}</span>${escapeHtml(v.text)}</div>`;
+    }).join('');
+    panel.innerHTML = `<div class="chapter-title">${escapeHtml(data.book)} ${data.chapter}</div>${versesHtml}`;
+    const firstHl = panel.querySelector('.cv.hl');
+    if (firstHl) firstHl.scrollIntoView({ block: 'nearest' });
+  } catch (err) {
+    panel.innerHTML = `<div class="chapter-error">Couldn’t load the chapter. ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+passageList.addEventListener('click', (e) => {
+  const btn = e.target.closest('.chapter-toggle');
+  if (!btn) return;
+  toggleChapter(btn.closest('.passage-card'));
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    const open = passageList.querySelector('.passage-card.expanded');
+    if (open) toggleChapter(open);
+  }
+});
 
 // Signature interaction: citations and ref chips illuminate their passage card.
 function litCard(n, on) {
@@ -630,17 +843,23 @@ function litCard(n, on) {
   if (card) card.classList.toggle('lit', on);
   return card;
 }
+function setOf(t) {
+  const msg = t.closest('.msg');
+  return (msg && msg.dataset.set !== undefined) ? Number(msg.dataset.set) : -1;
+}
 messagesEl.addEventListener('mouseover', (e) => {
   const t = e.target.closest('.cite, .ref-chip');
-  if (t) litCard(t.dataset.n, true);
+  if (t && setOf(t) === shownSet) litCard(t.dataset.n, true);
 });
 messagesEl.addEventListener('mouseout', (e) => {
   const t = e.target.closest('.cite, .ref-chip');
-  if (t) litCard(t.dataset.n, false);
+  if (t && setOf(t) === shownSet) litCard(t.dataset.n, false);
 });
 messagesEl.addEventListener('click', (e) => {
   const t = e.target.closest('.cite, .ref-chip');
   if (!t) return;
+  const idx = setOf(t);
+  if (idx >= 0 && idx !== shownSet) renderPassages(idx);
   const card = litCard(t.dataset.n, true);
   if (card) {
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -661,8 +880,69 @@ function formatAnswer(str) {
     .replace(/\n/g, '<br>');
 }
 
+// Biblical "status" words shown (one at a time, cycling) while Shiloh thinks,
+// in place of a plain typing indicator.
+const THINKING_WORDS = [
+  'Praying', 'Prophesying', 'Meditating', 'Discerning', 'Pondering',
+  'Interceding', 'Seeking', 'Studying the scriptures', 'Reflecting',
+  'Communing', 'Contemplating', 'Waiting on the Lord', 'Searching the scrolls',
+  'Kindling the lamp', 'Gathering manna', 'Listening', 'Weighing the word',
+];
+
+function startThinking() {
+  const wrap = addMessage('assistant',
+    '<span class="thinking"><span class="tw"></span>' +
+    '<span class="td"><span></span><span></span><span></span></span></span>');
+  const twEl = wrap.querySelector('.tw');
+  let i = Math.floor(Math.random() * THINKING_WORDS.length);
+  const setWord = () => {
+    twEl.textContent = THINKING_WORDS[i % THINKING_WORDS.length] + '…';
+    twEl.classList.remove('swap');
+    void twEl.offsetWidth;  // restart the fade animation
+    twEl.classList.add('swap');
+    i++;
+  };
+  setWord();
+  wrap._thinkingId = setInterval(setWord, 2000);
+  return wrap;
+}
+
+function stopThinking(wrap) {
+  if (wrap && wrap._thinkingId) clearInterval(wrap._thinkingId);
+  if (wrap) wrap.remove();
+}
+
+// Only one request may be in flight at a time; a second prompt can't start
+// until the first finishes. While sending, the button becomes a Stop control
+// that cancels the in-flight request.
+let isSending = false;
+let currentAbort = null;
+
+function setSendingUI(sending) {
+  isSending = sending;
+  if (sending) {
+    sendBtn.classList.add('stop');
+    sendBtn.textContent = 'Stop';
+    sendBtn.title = 'Stop generating';
+  } else {
+    sendBtn.classList.remove('stop');
+    sendBtn.textContent = 'Ask';
+    sendBtn.title = '';
+  }
+}
+
+// Clicking the button while a request is running aborts it instead of
+// submitting a new prompt.
+sendBtn.addEventListener('click', (e) => {
+  if (isSending) {
+    e.preventDefault();
+    if (currentAbort) currentAbort.abort();
+  }
+});
+
 composer.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (isSending) return;  // block a second prompt until the first completes
   const text = input.value.trim();
   if (!text) return;
 
@@ -670,31 +950,39 @@ composer.addEventListener('submit', async (e) => {
   history.push({ role: 'user', content: text });
   input.value = '';
   input.style.height = 'auto';
-  sendBtn.disabled = true;
+  setSendingUI(true);
 
-  const typingWrap = addMessage('assistant', '<div class="typing"><span></span><span></span><span></span></div>');
+  const typingWrap = startThinking();
+  currentAbort = new AbortController();
 
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history: history.slice(0, -1), top_k: 6, ...selectedModel() })
+      body: JSON.stringify({ message: text, history: history.slice(0, -1), top_k: 6, ...selectedModel() }),
+      signal: currentAbort.signal
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || 'Request failed');
     }
     const data = await res.json();
-    typingWrap.remove();
+    stopThinking(typingWrap);
     const refs = (data.passages || []).map(p => p.reference);
-    addMessage('assistant', formatAnswer(data.answer), refs);
+    const setIdx = passageSets.push(data.passages || []) - 1;
+    addMessage('assistant', formatAnswer(data.answer), refs, setIdx);
     history.push({ role: 'assistant', content: data.answer });
-    renderPassages(data.passages);
+    renderPassages(setIdx);
   } catch (err) {
-    typingWrap.remove();
-    addMessage('assistant', `<em>Something went wrong: ${escapeHtml(err.message)}</em>`);
+    stopThinking(typingWrap);
+    if (err.name === 'AbortError') {
+      addMessage('assistant', '<em>Stopped.</em>');
+    } else {
+      addMessage('assistant', `<em>Something went wrong: ${escapeHtml(err.message)}</em>`);
+    }
   } finally {
-    sendBtn.disabled = false;
+    currentAbort = null;
+    setSendingUI(false);
     input.focus();
   }
 });
