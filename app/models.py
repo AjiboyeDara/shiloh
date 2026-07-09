@@ -23,6 +23,7 @@ class PassageResult(BaseModel):
     chapter: int
     verse_start: Optional[int] = None
     verse_end: Optional[int] = None
+    cross_references: List[str] = []
 
 
 class ChapterVerse(BaseModel):

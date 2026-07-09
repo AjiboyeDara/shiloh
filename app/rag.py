@@ -52,10 +52,26 @@ def build_context(passages, commentary_snippets=None):
     return context
 
 
+# Only this many trailing messages are sent to the model, so long
+# conversations don't grow the prompt without bound.
+HISTORY_LIMIT = 12
+
+
+def _retrieval_query(message: str, history):
+    """Short follow-ups ("what about verse 5?") retrieve poorly on their
+    own, so fold the previous user question into the retrieval query.
+    Longer messages are assumed to stand alone."""
+    if history and len(message.split()) < 12:
+        prev = next((t.content for t in reversed(history) if t.role == "user"), None)
+        if prev:
+            return f"{prev}\n{message}"
+    return message
+
+
 def _prepare(message: str, history=None, top_k: int = 6):
     """Shared retrieval + prompt assembly for both the blocking and
     streaming paths. Returns (messages, passages)."""
-    passages = retrieve(message, top_k=top_k)
+    passages = retrieve(_retrieval_query(message, history), top_k=top_k)
 
     # Pull commentary for chapters that showed up in retrieval, if the user
     # has populated resources/commentary/.
@@ -73,7 +89,7 @@ def _prepare(message: str, history=None, top_k: int = 6):
     context = build_context(passages, commentary_snippets)
 
     messages = []
-    for turn in (history or []):
+    for turn in (history or [])[-HISTORY_LIMIT:]:
         messages.append({"role": turn.role, "content": turn.content})
     messages.append({
         "role": "user",
@@ -140,6 +156,19 @@ def _generate_gemini(messages, model):
     )
 
 
+def _check_ollama_response(response, model):
+    """Raise a readable error instead of leaking the raw HTTP failure
+    (e.g. a missing model comes back as a 404 with an explanation)."""
+    if response.status_code < 400:
+        return
+    try:
+        detail = response.json().get("error") or f"HTTP {response.status_code}"
+    except ValueError:
+        detail = f"HTTP {response.status_code}"
+    hint = f" Try `ollama pull {model}`." if "not found" in detail else ""
+    raise RuntimeError(f"Ollama error: {detail}.{hint}")
+
+
 def _generate_ollama(messages, model):
     response = requests.post(
         f"{OLLAMA_URL}/api/chat",
@@ -151,7 +180,7 @@ def _generate_ollama(messages, model):
         },
         timeout=300,
     )
-    response.raise_for_status()
+    _check_ollama_response(response, model)
     return response.json()["message"]["content"]
 
 
@@ -182,7 +211,7 @@ def _stream_ollama(messages, model):
         timeout=300,
         stream=True,
     )
-    response.raise_for_status()
+    _check_ollama_response(response, model)
     for line in response.iter_lines():
         if not line:
             continue

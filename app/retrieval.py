@@ -29,26 +29,98 @@ def get_collection():
     return client.get_collection("bible_kjv")
 
 
+# ── Hybrid search: dense vectors + BM25, fused with RRF ─────────────────
+# The embedding model was trained on modern English while the KJV says
+# "charity" and "Holy Ghost"; BM25 catches exact archaic terms the
+# embeddings fuzz over, and a small synonym map bridges the most common
+# modern-vocabulary gaps in both directions.
+
+_KJV_SYNONYMS = {
+    "holy spirit": "holy ghost",
+    "love": "charity",
+    "anxiety": "take no thought carefulness",
+    "anxious": "take no thought careful",
+    "worry": "take no thought careful",
+    "worrying": "take no thought careful",
+}
+
+_RRF_K = 60          # standard reciprocal-rank-fusion constant
+_CANDIDATES = 50     # candidates pulled from each retriever before fusing
+
+
+def _expand_query(query: str):
+    low = query.lower()
+    extra = [kjv for term, kjv in _KJV_SYNONYMS.items()
+             if re.search(rf"\b{re.escape(term)}\b", low) and kjv not in low]
+    if extra:
+        query = f"{query} ({' '.join(dict.fromkeys(extra))})"
+    return query
+
+
+def _tokenize(text: str):
+    return re.findall(r"[a-z']+", text.lower())
+
+
+@lru_cache(maxsize=1)
+def _bm25_index():
+    """Lexical index over the same chunks as the vector index. Built
+    lazily on first search (a few seconds), then cached."""
+    try:
+        from rank_bm25 import BM25Okapi
+    except ImportError:
+        return None
+    data = get_collection().get()  # ids, documents, metadatas
+    return BM25Okapi([_tokenize(d) for d in data["documents"]]), data
+
+
+def _as_passage(doc, meta):
+    return {
+        "reference": meta["reference"],
+        "text": doc,
+        "book": meta["book"],
+        "chapter": meta["chapter"],
+        "verse_start": meta.get("verse_start"),
+        "verse_end": meta.get("verse_end"),
+    }
+
+
 def search_passages(query: str, top_k: int = 6):
-    """Returns a list of dicts: reference, text, book, chapter,
-    verse_start, verse_end."""
+    """Hybrid semantic + lexical search. Returns a list of dicts:
+    reference, text, book, chapter, verse_start, verse_end."""
+    query = _expand_query(query)
     model = get_embedder()
     collection = get_collection()
 
     query_embedding = model.encode([query], normalize_embeddings=True)[0].tolist()
-    results = collection.query(query_embeddings=[query_embedding], n_results=top_k)
+    results = collection.query(
+        query_embeddings=[query_embedding],
+        n_results=max(top_k, _CANDIDATES),
+    )
 
-    passages = []
-    for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
-        passages.append({
-            "reference": meta["reference"],
-            "text": doc,
-            "book": meta["book"],
-            "chapter": meta["chapter"],
-            "verse_start": meta.get("verse_start"),
-            "verse_end": meta.get("verse_end"),
-        })
-    return passages
+    # id -> [rrf_score, doc, meta]
+    fused = {}
+    for rank, (id_, doc, meta) in enumerate(zip(
+            results["ids"][0], results["documents"][0], results["metadatas"][0])):
+        fused[id_] = [1.0 / (_RRF_K + rank + 1), doc, meta]
+
+    bm = _bm25_index()
+    if bm is not None:
+        bm25, data = bm
+        scores = bm25.get_scores(_tokenize(query))
+        top_idx = sorted(range(len(scores)), key=scores.__getitem__,
+                         reverse=True)[:_CANDIDATES]
+        for rank, i in enumerate(top_idx):
+            if scores[i] <= 0:
+                break
+            contribution = 1.0 / (_RRF_K + rank + 1)
+            id_ = data["ids"][i]
+            if id_ in fused:
+                fused[id_][0] += contribution
+            else:
+                fused[id_] = [contribution, data["documents"][i], data["metadatas"][i]]
+
+    best = sorted(fused.values(), key=lambda x: -x[0])[:top_k]
+    return [_as_passage(doc, meta) for _, doc, meta in best]
 
 
 VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
@@ -67,9 +139,16 @@ def _load_all_verses():
     return by_chapter
 
 
+def canonical_book(book: str) -> str:
+    """'psalms', 'PSALMS', or 'psalm' -> 'Psalms'; unknown names pass through."""
+    _, names = _reference_pattern()
+    return names.get(book.strip().lower(), book)
+
+
 def get_chapter(book: str, chapter: int):
-    """Return the ordered verses (verse, text) for a given book + chapter."""
-    vlist = _load_all_verses().get((book, chapter), [])
+    """Return the ordered verses (verse, text) for a given book + chapter.
+    Book name matching is case-insensitive."""
+    vlist = _load_all_verses().get((canonical_book(book), chapter), [])
     return [{"verse": v["verse"], "text": v["text"]} for v in vlist]
 
 
@@ -160,26 +239,41 @@ def retrieve(query: str, top_k: int = 6):
         if any(_overlaps(p, d) for d in direct):
             continue
         results.append(p)
+    for p in results:
+        p["cross_references"] = passage_cross_references(p)
     return results
 
 
-def load_cross_references(book: str, chapter: int, verse: int):
-    """
-    Optional: looks up cross-references if the user has placed a file at
-    resources/cross_references/cross_references.json in the format:
-    { "Book Chapter:Verse": ["Book Chapter:Verse", ...], ... }
-
-    Source suggestion (public domain, derived from the Treasury of Scripture
-    Knowledge): https://www.openbible.info/labs/cross-references/
-    or the scrollmapper/bible_databases GitHub repo.
-    """
+@lru_cache(maxsize=1)
+def _cross_reference_data():
+    """Cross-references from resources/cross_references/cross_references.json
+    in the format { "Book Chapter:Verse": ["Book Chapter:Verse", ...], ... }.
+    Generate it with scripts/fetch_cross_references.py, or supply your own.
+    Loaded once; empty dict if the file isn't there."""
     path = os.path.join(RESOURCES_DIR, "cross_references", "cross_references.json")
     if not os.path.exists(path):
-        return []
+        return {}
     with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    key = f"{book} {chapter}:{verse}"
-    return data.get(key, [])
+        return json.load(f)
+
+
+def load_cross_references(book: str, chapter: int, verse: int):
+    return _cross_reference_data().get(f"{book} {chapter}:{verse}", [])
+
+
+def passage_cross_references(passage: dict, limit: int = 6):
+    """Deduped cross-references for every verse a passage spans."""
+    data = _cross_reference_data()
+    if not data or passage.get("verse_start") is None:
+        return []
+    refs = []
+    for verse in range(passage["verse_start"], passage["verse_end"] + 1):
+        for ref in data.get(f"{passage['book']} {passage['chapter']}:{verse}", []):
+            if ref not in refs:
+                refs.append(ref)
+            if len(refs) >= limit:
+                return refs
+    return refs
 
 
 def load_commentary(book: str, chapter: int):
