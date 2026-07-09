@@ -203,6 +203,11 @@
     line-height: 1.75;
     color: var(--ink);
   }
+  .msg.assistant .bubble p { margin: 0 0 12px; }
+  .msg.assistant .bubble p:last-child { margin-bottom: 0; }
+  .msg.assistant .bubble ul,
+  .msg.assistant .bubble ol { margin: 0 0 12px; padding-left: 22px; }
+  .msg.assistant .bubble li { margin-bottom: 6px; }
   .msg.assistant .bubble sup.cite {
     color: var(--accent);
     font-weight: 600;
@@ -764,10 +769,10 @@ function renderPassages(setIdx) {
          data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
          style="animation-delay: ${i * 60}ms">
       <div class="card-head">
-        <div class="ref">${p.reference}</div>
+        <div class="ref">${escapeHtml(p.reference)}</div>
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
       </div>
-      <div class="verse-text">${p.text}</div>
+      <div class="verse-text">${escapeHtml(p.text)}</div>
       <button type="button" class="chapter-toggle" aria-expanded="false">
         <span class="label">Read full chapter</span>
         <span class="chev">&#9660;</span>
@@ -877,11 +882,43 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Render bracketed citations like [1] as superscripts tied to passage numbers.
+// Render the answer: escape first, then a small markdown pass (bold,
+// italics, headings, lists) plus [1]-style citations as clickable sups.
 function formatAnswer(str) {
-  return escapeHtml(str)
-    .replace(/\[(\d+)\]/g, '<sup class="cite" data-n="$1" title="Show passage $1">$1</sup>')
-    .replace(/\n/g, '<br>');
+  const inline = s => s
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[(\d+)\]/g, '<sup class="cite" data-n="$1" title="Show passage $1">$1</sup>');
+
+  let html = '', list = null, para = [];
+  const flushPara = () => {
+    if (para.length) { html += `<p>${para.join('<br>')}</p>`; para = []; }
+  };
+  const closeList = () => {
+    if (list) { html += `</${list}>`; list = null; }
+  };
+
+  for (const rawLine of escapeHtml(str).split('\n')) {
+    const line = rawLine.trim();
+    const bullet = line.match(/^[-*•]\s+(.*)/);
+    const numbered = line.match(/^\d{1,2}\.\s+(.*)/);
+    if (bullet || numbered) {
+      flushPara();
+      const type = bullet ? 'ul' : 'ol';
+      if (list !== type) { closeList(); html += `<${type}>`; list = type; }
+      html += `<li>${inline((bullet || numbered)[1])}</li>`;
+    } else if (/^#{1,4}\s+/.test(line)) {
+      closeList(); flushPara();
+      html += `<p><strong>${inline(line.replace(/^#{1,4}\s+/, ''))}</strong></p>`;
+    } else if (line === '') {
+      closeList(); flushPara();
+    } else {
+      closeList();
+      para.push(inline(line));
+    }
+  }
+  closeList(); flushPara();
+  return html;
 }
 
 // Biblical "status" words shown (one at a time, cycling) while Shiloh thinks,
@@ -944,6 +981,28 @@ sendBtn.addEventListener('click', (e) => {
   }
 });
 
+// Parse an SSE byte stream, invoking onEvent(type, payload) per event.
+async function readSSE(res, onEvent) {
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const events = buf.split('\n\n');
+    buf = events.pop();  // keep any incomplete trailing event
+    for (const evt of events) {
+      let type = 'message', data = '';
+      for (const line of evt.split('\n')) {
+        if (line.startsWith('event:')) type = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      }
+      if (data) onEvent(type, JSON.parse(data));
+    }
+  }
+}
+
 composer.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (isSending) return;  // block a second prompt until the first completes
@@ -959,28 +1018,58 @@ composer.addEventListener('submit', async (e) => {
   const typingWrap = startThinking();
   currentAbort = new AbortController();
 
+  // Streaming state: the assistant message is created on the first delta,
+  // after the passages event has told us which refs to attach.
+  let answerRaw = '';
+  let setIdx = -1;
+  let bubble = null;
+
+  const ensureAnswerMsg = () => {
+    if (bubble) return;
+    stopThinking(typingWrap);
+    const refs = setIdx >= 0 ? passageSets[setIdx].map(p => p.reference) : [];
+    const wrap = addMessage('assistant', '', refs, setIdx >= 0 ? setIdx : undefined);
+    bubble = wrap.querySelector('.bubble');
+  };
+
   try {
-    const res = await fetch('/api/chat', {
+    const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, history: history.slice(0, -1), top_k: 6, ...selectedModel() }),
       signal: currentAbort.signal
     });
-    if (!res.ok) {
+    if (!res.ok || !res.body) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || 'Request failed');
     }
-    const data = await res.json();
-    stopThinking(typingWrap);
-    const refs = (data.passages || []).map(p => p.reference);
-    const setIdx = passageSets.push(data.passages || []) - 1;
-    addMessage('assistant', formatAnswer(data.answer), refs, setIdx);
-    history.push({ role: 'assistant', content: data.answer });
-    renderPassages(setIdx);
+
+    await readSSE(res, (type, payload) => {
+      if (type === 'passages') {
+        setIdx = passageSets.push(payload.passages || []) - 1;
+        renderPassages(setIdx);
+      } else if (type === 'error') {
+        throw new Error(payload.message || 'Generation failed');
+      } else if (payload.delta) {
+        ensureAnswerMsg();
+        answerRaw += payload.delta;
+        bubble.innerHTML = formatAnswer(answerRaw);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+    });
+
+    ensureAnswerMsg();
+    if (answerRaw) history.push({ role: 'assistant', content: answerRaw });
   } catch (err) {
     stopThinking(typingWrap);
     if (err.name === 'AbortError') {
-      addMessage('assistant', '<em>Stopped.</em>');
+      if (answerRaw && bubble) {
+        // Keep the partial answer; the model just stops mid-thought.
+        bubble.insertAdjacentHTML('beforeend', ' <em>(stopped)</em>');
+        history.push({ role: 'assistant', content: answerRaw });
+      } else {
+        addMessage('assistant', '<em>Stopped.</em>');
+      }
     } else {
       addMessage('assistant', `<em>Something went wrong: ${escapeHtml(err.message)}</em>`);
     }
