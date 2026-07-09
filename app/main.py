@@ -1,3 +1,4 @@
+import json
 import os
 
 from dotenv import load_dotenv
@@ -6,7 +7,7 @@ load_dotenv()  # must run before app.rag reads provider/model settings at import
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.models import (
@@ -20,8 +21,30 @@ from app.models import (
 )
 import requests
 
-from app.rag import GEMINI_MODEL, MODEL, OLLAMA_MODEL, OLLAMA_URL, PROVIDER, answer_question
-from app.retrieval import get_chapter, search_passages
+from app.rag import (
+    GEMINI_MODEL,
+    MODEL,
+    OLLAMA_MODEL,
+    OLLAMA_URL,
+    PROVIDER,
+    answer_question,
+    stream_answer,
+)
+from app.retrieval import canonical_book, get_chapter, retrieve
+
+OLLAMA_DOWN_MSG = (
+    "Couldn't reach the local Ollama server. Start it with `ollama serve` "
+    "(or switch to another provider in the model picker)."
+)
+
+
+def _check_provider_key(provider: str):
+    required_key = {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}.get(provider)
+    if required_key and not os.environ.get(required_key):
+        raise HTTPException(
+            status_code=500,
+            detail=f"{required_key} is not set. Add it to your .env file.",
+        )
 
 app = FastAPI(title="Open Bible Study AI")
 
@@ -92,7 +115,7 @@ def list_models():
 @app.post("/api/search", response_model=SearchResponse)
 def search(req: SearchRequest):
     try:
-        results = search_passages(req.query, top_k=req.top_k)
+        results = retrieve(req.query, top_k=req.top_k)
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -110,7 +133,7 @@ def chapter(book: str, chapter: int):
             detail=f"No verses found for {book} {chapter}.",
         )
     return ChapterResponse(
-        book=book,
+        book=canonical_book(book),
         chapter=chapter,
         verses=[ChapterVerse(**v) for v in verses],
     )
@@ -119,21 +142,52 @@ def chapter(book: str, chapter: int):
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     provider = (req.provider or PROVIDER).lower()
-    required_key = {"anthropic": "ANTHROPIC_API_KEY", "gemini": "GEMINI_API_KEY"}.get(provider)
-    if required_key and not os.environ.get(required_key):
-        raise HTTPException(
-            status_code=500,
-            detail=f"{required_key} is not set. Add it to your .env file.",
-        )
+    _check_provider_key(provider)
     try:
         answer_text, passages = answer_question(
             req.message, history=req.history, top_k=req.top_k,
             provider=provider, model=req.model,
         )
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail=OLLAMA_DOWN_MSG)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     return ChatResponse(
         answer=answer_text,
         passages=[PassageResult(**p) for p in passages],
+    )
+
+
+@app.post("/api/chat/stream")
+def chat_stream(req: ChatRequest):
+    """Server-sent events: one `passages` event, then `data` deltas of the
+    answer text, then a `done` event. Errors mid-stream arrive as an
+    `error` event since the 200 status is already committed."""
+    provider = (req.provider or PROVIDER).lower()
+    _check_provider_key(provider)
+
+    def sse(event, payload):
+        prefix = f"event: {event}\n" if event else ""
+        return f"{prefix}data: {json.dumps(payload)}\n\n"
+
+    def event_stream():
+        try:
+            passages, deltas = stream_answer(
+                req.message, history=req.history, top_k=req.top_k,
+                provider=provider, model=req.model,
+            )
+            yield sse("passages", {"passages": passages})
+            for chunk in deltas:
+                yield sse(None, {"delta": chunk})
+            yield sse("done", {})
+        except requests.exceptions.ConnectionError:
+            yield sse("error", {"message": OLLAMA_DOWN_MSG})
+        except Exception as e:
+            yield sse("error", {"message": str(e)})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
