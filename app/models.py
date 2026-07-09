@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ChatMessage(BaseModel):
@@ -11,7 +11,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     history: List[ChatMessage] = []
-    top_k: int = 6
+    top_k: int = Field(6, ge=1, le=20)
     provider: Optional[str] = None  # "ollama" | "gemini" | "anthropic"; None = server default
     model: Optional[str] = None     # model name within the provider; None = provider default
 
@@ -43,7 +43,7 @@ class ChatResponse(BaseModel):
 
 class SearchRequest(BaseModel):
     query: str
-    top_k: int = 8
+    top_k: int = Field(8, ge=1, le=20)
 
 
 class SearchResponse(BaseModel):
