@@ -22,6 +22,7 @@
     --card-border: #cfe3f2;
     --card-bg: #f3f9fe;
     --card-bg-alt: #ffffff;
+    --chapter-bg: #e2edf8;
     --chip-border: #c4dcee;
     --field-bg: #f4f8fb;
     --btn-ink: #0d3a5c;
@@ -42,6 +43,7 @@
     --card-border: #2b608a;
     --card-bg: rgba(144, 213, 255, 0.05);
     --card-bg-alt: rgba(144, 213, 255, 0.05);
+    --chapter-bg: #002a45;
     --chip-border: #35648b;
     --field-bg: #0a416a;
     --btn-ink: #0b3a5c;
@@ -174,7 +176,7 @@
     align-self: flex-end;
     background: var(--bubble-user);
     color: var(--bubble-user-ink);
-    border-radius: 3px;
+    border-radius: 16px 16px 4px 16px;
     padding: 14px 20px;
     font-size: 15.5px;
     line-height: 1.6;
@@ -450,9 +452,11 @@
   .passage-card.expanded .chapter-toggle .chev { transform: rotate(180deg); }
 
   .chapter-panel {
-    margin-top: 14px;
+    margin: 14px -20px -18px;
     border-top: 1px solid var(--rule);
-    padding-top: 12px;
+    padding: 14px 20px 16px;
+    background: var(--chapter-bg);
+    border-radius: 0 0 4px 4px;
     max-height: 340px;
     overflow-y: auto;
     animation: rise 0.25s ease both;
