@@ -151,10 +151,64 @@
     grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr);
     min-height: 0;
   }
+  /* Mobile: the passages column becomes a bottom sheet, opened by tapping
+     a citation or the floating button, so grounding survives small screens. */
+  .sheet-close { display: none; }
+  .sheet-fab { display: none; }
   @media (max-width: 860px) {
     main.grid { grid-template-columns: 1fr; }
-    .passages { display: none; }
+    .chat-col { border-right: none; }
+    .passages {
+      position: fixed;
+      left: 0; right: 0; bottom: 0;
+      max-height: 72vh;
+      border-top: 1px solid var(--rule);
+      border-radius: 14px 14px 0 0;
+      box-shadow: 0 -10px 34px rgba(0, 0, 0, 0.3);
+      transform: translateY(105%);
+      transition: transform 0.3s ease;
+      z-index: 60;
+    }
+    .passages.open { transform: translateY(0); }
+    .sheet-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 30px; height: 30px;
+      background: transparent;
+      border: 1px solid var(--chip-border);
+      border-radius: 3px;
+      color: var(--ink-soft);
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .sheet-fab:not([hidden]) {
+      display: inline-flex;
+      align-items: center;
+      position: fixed;
+      right: 14px;
+      bottom: 128px;
+      z-index: 50;
+      font-family: 'Inter', sans-serif;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--btn-ink);
+      background: var(--accent-bright);
+      border: none;
+      border-radius: 999px;
+      padding: 10px 16px;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+    }
   }
+  .sheet-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .sheet-head h2 { margin: 0 0 18px; }
 
   /* ── Chat column ────────────────────────── */
   .chat-col {
@@ -421,6 +475,36 @@
     margin-right: 2px;
   }
 
+  /* ── Cross-reference chips ──────────────── */
+  .xrefs {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .xrefs .xref-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 2px;
+  }
+  .xref-chip {
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--chip-border);
+    border-radius: 3px;
+    padding: 3px 9px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .xref-chip:hover { border-color: var(--accent); background: var(--card-bg); }
+
   /* ── Read full chapter (expand within card) ──── */
   .chapter-toggle {
     margin-top: 12px;
@@ -605,6 +689,7 @@
         <select id="modelSelect" title="Choose which AI model answers"></select>
       </div>
       <span class="colophon">KJV &middot; retrieval-augmented</span>
+      <button class="theme-toggle" id="newChat" title="New conversation" aria-label="Start a new conversation">&#65291;</button>
       <button class="theme-toggle" id="themeToggle" title="Toggle light / dark mode" aria-label="Toggle light and dark mode"></button>
     </div>
   </header>
@@ -632,8 +717,11 @@
       </div>
     </section>
 
-    <aside class="passages">
-      <h2>Retrieved passages</h2>
+    <aside class="passages" id="passagesPane">
+      <div class="sheet-head">
+        <h2>Retrieved passages</h2>
+        <button class="sheet-close" id="sheetClose" aria-label="Close passages">&#10005;</button>
+      </div>
       <div id="passageList">
         <div class="placeholder">
           <div class="num-box">1</div>
@@ -642,17 +730,31 @@
       </div>
     </aside>
   </main>
+  <button class="sheet-fab" id="sheetFab" hidden>Passages</button>
 </div>
 
 <script>
 const messagesEl = document.getElementById('messages');
-const emptyState = document.getElementById('emptyState');
 const composer = document.getElementById('composer');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const passageList = document.getElementById('passageList');
+const passagesPane = document.getElementById('passagesPane');
+const sheetFab = document.getElementById('sheetFab');
+const sheetClose = document.getElementById('sheetClose');
+
+// Snapshots for restoring the initial UI after "New conversation".
+const EMPTY_STATE_HTML = messagesEl.innerHTML;
+const PLACEHOLDER_HTML = passageList.innerHTML;
 
 let history = [];
+
+// --- Mobile bottom sheet ---
+const isMobile = () => window.matchMedia('(max-width: 860px)').matches;
+function openSheet() { passagesPane.classList.add('open'); }
+function closeSheet() { passagesPane.classList.remove('open'); }
+sheetFab.addEventListener('click', openSheet);
+sheetClose.addEventListener('click', closeSheet);
 
 // --- Theme toggle ---
 const themeToggle = document.getElementById('themeToggle');
@@ -735,7 +837,7 @@ input.addEventListener('keydown', (e) => {
 });
 
 function addMessage(role, contentHtml, refs, setIdx) {
-  if (emptyState) emptyState.remove();
+  document.getElementById('emptyState')?.remove();
   const wrap = document.createElement('div');
   wrap.className = 'msg ' + role;
   if (setIdx !== undefined) wrap.dataset.set = setIdx;
@@ -763,7 +865,14 @@ function renderPassages(setIdx) {
   const passages = passageSets[setIdx];
   if (!passages || !passages.length) return;
   shownSet = setIdx;
-  passageList.innerHTML = passages.map((p, i) => `
+  passageList.innerHTML = passages.map((p, i) => {
+    const xr = p.cross_references || [];
+    const xrefsHtml = xr.length
+      ? `<div class="xrefs"><span class="xref-label">See also</span>${
+          xr.map(r => `<button type="button" class="xref-chip" data-ref="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')
+        }</div>`
+      : '';
+    return `
     <div class="passage-card" data-n="${i + 1}"
          data-book="${escapeHtml(p.book)}" data-chapter="${p.chapter}"
          data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
@@ -773,43 +882,35 @@ function renderPassages(setIdx) {
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
       </div>
       <div class="verse-text">${escapeHtml(p.text)}</div>
+      ${xrefsHtml}
       <button type="button" class="chapter-toggle" aria-expanded="false">
         <span class="label">Read full chapter</span>
         <span class="chev">&#9660;</span>
       </button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+  sheetFab.hidden = false;
+  sheetFab.textContent = `Passages · ${passages.length}`;
 }
 
-// Expand a passage card in place to show its full chapter, scrollable, with
-// the retrieved verses highlighted. Only one card is expanded at a time.
-async function toggleChapter(card) {
+// Chapter panels expand within a passage card: the card's own chapter via
+// the toggle button, or any chapter via a cross-reference chip. Only one
+// card is expanded at a time.
+function collapseChapter(card) {
+  card.querySelector('.chapter-panel')?.remove();
+  card.classList.remove('expanded');
   const btn = card.querySelector('.chapter-toggle');
-  const existing = card.querySelector('.chapter-panel');
-  if (existing) {
-    existing.remove();
-    card.classList.remove('expanded');
-    btn.setAttribute('aria-expanded', 'false');
-    btn.querySelector('.label').textContent = 'Read full chapter';
-    return;
-  }
+  btn.setAttribute('aria-expanded', 'false');
+  btn.querySelector('.label').textContent = 'Read full chapter';
+}
 
-  // Collapse any other open chapter first.
+async function openChapterPanel(card, book, chapter, vStart, vEnd) {
   passageList.querySelectorAll('.passage-card.expanded').forEach(c => {
-    if (c !== card) {
-      c.querySelector('.chapter-panel')?.remove();
-      c.classList.remove('expanded');
-      const b = c.querySelector('.chapter-toggle');
-      b.setAttribute('aria-expanded', 'false');
-      b.querySelector('.label').textContent = 'Read full chapter';
-    }
+    if (c !== card) collapseChapter(c);
   });
+  card.querySelector('.chapter-panel')?.remove();
 
-  const book = card.dataset.book;
-  const chapter = card.dataset.chapter;
-  const vStart = Number(card.dataset.vstart) || null;
-  const vEnd = Number(card.dataset.vend) || vStart;
-
+  const btn = card.querySelector('.chapter-toggle');
   const panel = document.createElement('div');
   panel.className = 'chapter-panel';
   panel.innerHTML = '<div class="chapter-loading">Loading chapter…</div>';
@@ -823,7 +924,7 @@ async function toggleChapter(card) {
     if (!res.ok) throw new Error('Chapter not found');
     const data = await res.json();
     const versesHtml = data.verses.map(v => {
-      const hl = vStart && v.verse >= vStart && v.verse <= vEnd ? ' hl' : '';
+      const hl = vStart && v.verse >= vStart && v.verse <= (vEnd || vStart) ? ' hl' : '';
       return `<div class="cv${hl}" data-v="${v.verse}"><span class="vn">${v.verse}</span>${escapeHtml(v.text)}</div>`;
     }).join('');
     panel.innerHTML = `<div class="chapter-title">${escapeHtml(data.book)} ${data.chapter}</div>${versesHtml}`;
@@ -834,16 +935,40 @@ async function toggleChapter(card) {
   }
 }
 
+function toggleChapter(card) {
+  if (card.querySelector('.chapter-panel')) {
+    collapseChapter(card);
+  } else {
+    openChapterPanel(
+      card,
+      card.dataset.book,
+      card.dataset.chapter,
+      Number(card.dataset.vstart) || null,
+      Number(card.dataset.vend) || Number(card.dataset.vstart) || null
+    );
+  }
+}
+
 passageList.addEventListener('click', (e) => {
+  const xref = e.target.closest('.xref-chip');
+  if (xref) {
+    const m = xref.dataset.ref.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
+    if (m) {
+      const vStart = m[3] ? Number(m[3]) : null;
+      openChapterPanel(xref.closest('.passage-card'), m[1], Number(m[2]),
+                       vStart, m[4] ? Number(m[4]) : vStart);
+    }
+    return;
+  }
   const btn = e.target.closest('.chapter-toggle');
   if (!btn) return;
   toggleChapter(btn.closest('.passage-card'));
 });
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') {
-    const open = passageList.querySelector('.passage-card.expanded');
-    if (open) toggleChapter(open);
-  }
+  if (e.key !== 'Escape') return;
+  if (passagesPane.classList.contains('open')) { closeSheet(); return; }
+  const open = passageList.querySelector('.passage-card.expanded');
+  if (open) toggleChapter(open);
 });
 
 // Signature interaction: citations and ref chips illuminate their passage card.
@@ -869,6 +994,7 @@ messagesEl.addEventListener('click', (e) => {
   if (!t) return;
   const idx = setOf(t);
   if (idx >= 0 && idx !== shownSet) renderPassages(idx);
+  if (isMobile()) openSheet();
   const card = litCard(t.dataset.n, true);
   if (card) {
     card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -1036,7 +1162,12 @@ composer.addEventListener('submit', async (e) => {
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, history: history.slice(0, -1), top_k: 6, ...selectedModel() }),
+      body: JSON.stringify({
+      message: text,
+      history: history.slice(0, -1).map(({ role, content }) => ({ role, content })),
+      top_k: 6,
+      ...selectedModel()
+    }),
       signal: currentAbort.signal
     });
     if (!res.ok || !res.body) {
@@ -1059,14 +1190,14 @@ composer.addEventListener('submit', async (e) => {
     });
 
     ensureAnswerMsg();
-    if (answerRaw) history.push({ role: 'assistant', content: answerRaw });
+    if (answerRaw) history.push({ role: 'assistant', content: answerRaw, setIdx });
   } catch (err) {
     stopThinking(typingWrap);
     if (err.name === 'AbortError') {
       if (answerRaw && bubble) {
         // Keep the partial answer; the model just stops mid-thought.
         bubble.insertAdjacentHTML('beforeend', ' <em>(stopped)</em>');
-        history.push({ role: 'assistant', content: answerRaw });
+        history.push({ role: 'assistant', content: answerRaw, setIdx });
       } else {
         addMessage('assistant', '<em>Stopped.</em>');
       }
@@ -1076,9 +1207,54 @@ composer.addEventListener('submit', async (e) => {
   } finally {
     currentAbort = null;
     setSendingUI(false);
+    saveConversation();
     input.focus();
   }
 });
+
+// --- Conversation persistence ---
+const STORAGE_KEY = 'shiloh-conversation';
+
+function saveConversation() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, passageSets }));
+  } catch (e) { /* storage full or unavailable; conversation just won't persist */ }
+}
+
+function restoreConversation() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
+  if (!saved || !Array.isArray(saved.history) || !saved.history.length) return;
+  history = saved.history;
+  passageSets.length = 0;
+  (saved.passageSets || []).forEach(s => passageSets.push(s));
+  for (const turn of history) {
+    if (turn.role === 'user') {
+      addMessage('user', escapeHtml(turn.content));
+    } else {
+      const set = turn.setIdx >= 0 ? passageSets[turn.setIdx] : null;
+      const refs = set ? set.map(p => p.reference) : [];
+      addMessage('assistant', formatAnswer(turn.content), refs, set ? turn.setIdx : undefined);
+    }
+  }
+  const last = [...history].reverse().find(t => t.setIdx >= 0 && passageSets[t.setIdx]);
+  if (last) renderPassages(last.setIdx);
+}
+
+function newConversation() {
+  history = [];
+  passageSets.length = 0;
+  shownSet = -1;
+  localStorage.removeItem(STORAGE_KEY);
+  messagesEl.innerHTML = EMPTY_STATE_HTML;
+  passageList.innerHTML = PLACEHOLDER_HTML;
+  sheetFab.hidden = true;
+  closeSheet();
+  input.focus();
+}
+document.getElementById('newChat').addEventListener('click', newConversation);
+
+restoreConversation();
 </script>
 </body>
 </html>

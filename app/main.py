@@ -30,7 +30,7 @@ from app.rag import (
     answer_question,
     stream_answer,
 )
-from app.retrieval import get_chapter, retrieve
+from app.retrieval import canonical_book, get_chapter, retrieve
 
 OLLAMA_DOWN_MSG = (
     "Couldn't reach the local Ollama server. Start it with `ollama serve` "
@@ -133,7 +133,7 @@ def chapter(book: str, chapter: int):
             detail=f"No verses found for {book} {chapter}.",
         )
     return ChapterResponse(
-        book=book,
+        book=canonical_book(book),
         chapter=chapter,
         verses=[ChapterVerse(**v) for v in verses],
     )
