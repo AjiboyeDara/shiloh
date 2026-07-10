@@ -339,6 +339,34 @@
     background: var(--card-bg);
     outline: 1px solid var(--chip-border);
   }
+  /* Verse links ("v. 26") and quote-verification marks */
+  .msg.assistant .bubble .vref {
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+    border-radius: 3px;
+  }
+  .msg.assistant .bubble .vref:hover,
+  .msg.assistant .bubble .vref:focus-visible {
+    background: var(--card-bg);
+    outline: 1px solid var(--chip-border);
+  }
+  .q-mark {
+    font-size: 10px;
+    font-weight: 700;
+    margin-left: 1px;
+    cursor: help;
+  }
+  .q-ok .q-mark { color: var(--accent); }
+  .q-warn {
+    text-decoration: underline wavy #c77414 1px;
+    text-underline-offset: 3px;
+  }
+  .q-warn .q-mark { color: #c77414; }
+  [data-theme="dark"] .q-warn { text-decoration-color: #f0b35e; }
+  [data-theme="dark"] .q-warn .q-mark { color: #f0b35e; }
+  .q-miss .q-mark { color: var(--ink-faint); }
   .msg .refs {
     margin-top: 12px;
     display: flex;
@@ -681,6 +709,43 @@
     color: var(--ink-faint);
     padding: 8px 0;
   }
+
+  /* ── Word-study panel (opens like the chapter panel) ── */
+  .word-panel .ws-entry {
+    margin-bottom: 12px;
+    line-height: 1.55;
+  }
+  .word-panel .ws-head {
+    display: block;
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent);
+  }
+  .word-panel .ws-lemma {
+    font-family: 'Cardo', serif;
+    font-size: 16px;
+  }
+  .word-panel .ws-def {
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+  }
+  .word-panel .ws-kjv {
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin-top: 2px;
+  }
+  .word-panel .ws-count {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 12px 0 6px;
+  }
   .passages .placeholder {
     text-align: center;
     padding-top: 34vh;
@@ -989,7 +1054,7 @@ function renderPassages(setIdx) {
         <div class="ref">${escapeHtml(p.reference)}</div>
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
       </div>
-      <div class="verse-text">${escapeHtml(p.text)}</div>
+      <div class="verse-text" title="Click any word to study its original Hebrew or Greek">${escapeHtml(p.text)}</div>
       ${xrefsHtml}
       <button type="button" class="chapter-toggle" aria-expanded="false">
         <span class="label">Read full chapter</span>
@@ -1057,6 +1122,68 @@ function toggleChapter(card) {
   }
 }
 
+// Word study: the KJV word under a click, found via the caret APIs so the
+// verse text doesn't need per-word markup.
+function wordAtPoint(x, y) {
+  let node, off;
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(x, y);
+    if (!p) return null;
+    node = p.offsetNode; off = p.offset;
+  } else if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(x, y);
+    if (!r) return null;
+    node = r.startContainer; off = r.startOffset;
+  } else return null;
+  if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+  const text = node.textContent;
+  const isW = ch => /[A-Za-z'’-]/.test(ch);
+  if (off >= text.length || !isW(text[off])) {
+    if (off > 0 && isW(text[off - 1])) off -= 1; else return null;
+  }
+  let s = off, e = off;
+  while (s > 0 && isW(text[s - 1])) s--;
+  while (e < text.length && isW(text[e])) e++;
+  const word = text.slice(s, e).replace(/’/g, "'").replace(/^['-]+|['-]+$/g, '');
+  return word.length >= 2 ? word : null;
+}
+
+// Opens Strong's entries + concordance for a word, in the same expanding
+// panel the full chapter uses. Occurrence chips reuse .xref-chip, so the
+// existing chip handler opens any of them as a chapter view.
+async function openWordPanel(card, word) {
+  passageList.querySelectorAll('.passage-card.expanded').forEach(c => {
+    if (c !== card) collapseChapter(c);
+  });
+  card.querySelector('.chapter-panel')?.remove();
+  const panel = document.createElement('div');
+  panel.className = 'chapter-panel word-panel';
+  panel.innerHTML = `<div class="chapter-loading">Looking up “${escapeHtml(word)}”…</div>`;
+  card.appendChild(panel);
+  card.classList.add('expanded');
+
+  try {
+    const res = await fetch(`/api/word-study?word=${encodeURIComponent(word)}`);
+    if (!res.ok) throw new Error('Lookup failed');
+    const d = await res.json();
+    const entries = d.strongs.map(s => `
+      <div class="ws-entry">
+        <span class="ws-head">${escapeHtml(s.number)} <span class="ws-lemma">${escapeHtml(s.lemma)}</span> ${escapeHtml(s.translit)}</span>
+        ${s.definition ? `<div class="ws-def">${escapeHtml(s.definition)}</div>` : ''}
+        ${s.kjv_def ? `<div class="ws-kjv">KJV renders it: ${escapeHtml(s.kjv_def)}</div>` : ''}
+      </div>`).join('');
+    const chips = d.occurrences.map(o =>
+      `<button type="button" class="xref-chip" data-ref="${escapeAttr(o.reference)}" title="${escapeAttr(o.text)}">${escapeHtml(o.reference)}</button>`).join('');
+    panel.innerHTML = `
+      <div class="chapter-title">Word study — “${escapeHtml(d.word)}”</div>
+      ${entries || '<div class="chapter-loading">No Strong&#39;s entry matches this word. Run scripts/fetch_strongs.py to enable original-language data.</div>'}
+      <div class="ws-count">Appears in ${d.count} verse${d.count === 1 ? '' : 's'}</div>
+      <div class="xrefs">${chips}</div>`;
+  } catch (err) {
+    panel.innerHTML = `<div class="chapter-error">Couldn’t look up the word. ${escapeHtml(err.message)}</div>`;
+  }
+}
+
 passageList.addEventListener('click', (e) => {
   const xref = e.target.closest('.xref-chip');
   if (xref) {
@@ -1069,8 +1196,15 @@ passageList.addEventListener('click', (e) => {
     return;
   }
   const btn = e.target.closest('.chapter-toggle');
-  if (!btn) return;
-  toggleChapter(btn.closest('.passage-card'));
+  if (btn) {
+    toggleChapter(btn.closest('.passage-card'));
+    return;
+  }
+  if (e.target.closest('button')) return;
+  const textEl = e.target.closest('.verse-text, .chapter-panel .cv');
+  if (!textEl) return;
+  const word = wordAtPoint(e.clientX, e.clientY);
+  if (word) openWordPanel(e.target.closest('.passage-card'), word);
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -1097,7 +1231,36 @@ messagesEl.addEventListener('mouseout', (e) => {
   const t = e.target.closest('.cite, .ref-chip');
   if (t && setOf(t) === shownSet) litCard(t.dataset.n, false);
 });
+// A bare "v. 26" names a verse but not a book: it inherits its passage from
+// the nearest [n] citation before it in the answer (the first passage when
+// the verse is mentioned before any citation), and opens that card's
+// chapter panel with the verse highlighted.
+function openVerseRef(v) {
+  const idx = setOf(v);
+  if (idx < 0) return;
+  if (idx !== shownSet) renderPassages(idx);
+  let n = 1;
+  for (const el of v.closest('.bubble').querySelectorAll('.cite, .vref')) {
+    if (el === v) break;
+    if (el.classList.contains('cite')) n = el.dataset.n;
+  }
+  const card = passageList.querySelector(`.passage-card[data-n="${n}"]`);
+  if (!card) return;
+  if (isMobile()) openSheet();
+  const vs = Number(v.dataset.vs);
+  openChapterPanel(card, card.dataset.book, card.dataset.chapter,
+                   vs, Number(v.dataset.ve) || vs);
+  card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+messagesEl.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const v = e.target.closest('.vref');
+  if (v) { e.preventDefault(); openVerseRef(v); }
+});
+
 messagesEl.addEventListener('click', (e) => {
+  const v = e.target.closest('.vref');
+  if (v) { openVerseRef(v); return; }
   const t = e.target.closest('.cite, .ref-chip');
   if (!t) return;
   const idx = setOf(t);
@@ -1115,6 +1278,35 @@ function escapeHtml(str) {
   div.textContent = str;
   return div.innerHTML;
 }
+function escapeAttr(str) {
+  return escapeHtml(str).replace(/"/g, '&quot;');
+}
+
+// The server checks every quotation in the answer against the actual KJV
+// text; wrap each one with its verification state. A quote the markdown
+// pass reformatted (rare) just goes unmarked.
+function annotateQuotes(bubble, checks) {
+  let html = bubble.innerHTML;
+  let changed = false;
+  for (const c of checks || []) {
+    const target = escapeHtml(c.quote);
+    const i = html.indexOf(target);
+    if (i === -1) continue;
+    let cls, mark, tip;
+    if (c.status === 'verified') {
+      cls = 'q-ok'; mark = '✓'; tip = `Word-for-word KJV — ${c.reference}`;
+    } else if (c.status === 'mismatch') {
+      cls = 'q-warn'; mark = '≈'; tip = `Differs from KJV (${c.reference}): “${c.actual}”`;
+    } else {
+      cls = 'q-miss'; mark = '?'; tip = 'Not found in the KJV';
+    }
+    html = html.slice(0, i)
+      + `<span class="${cls}" title="${escapeAttr(tip)}">${target}<sup class="q-mark">${mark}</sup></span>`
+      + html.slice(i + target.length);
+    changed = true;
+  }
+  if (changed) bubble.innerHTML = html;
+}
 
 // Render the answer: escape first, then a small markdown pass (bold,
 // italics, headings, lists) plus [1]-style citations as clickable sups.
@@ -1122,7 +1314,9 @@ function formatAnswer(str) {
   const inline = s => s
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[(\d+)\]/g, '<sup class="cite" data-n="$1" title="Show passage $1">$1</sup>');
+    .replace(/\[(\d+)\]/g, '<sup class="cite" data-n="$1" title="Show passage $1">$1</sup>')
+    .replace(/\b(?:vv?\.|verses?)\s?(\d{1,3})(?:\s?[-–]\s?(\d{1,3}))?/gi, (m, a, b) =>
+      `<span class="vref" role="link" tabindex="0" data-vs="${a}" data-ve="${b || a}" title="Show in chapter">${m}</span>`);
 
   let html = '', list = null, para = [];
   const flushPara = () => {
@@ -1257,6 +1451,7 @@ composer.addEventListener('submit', async (e) => {
   let answerRaw = '';
   let setIdx = -1;
   let bubble = null;
+  let quoteChecks = null;
 
   const ensureAnswerMsg = () => {
     if (bubble) return;
@@ -1287,6 +1482,8 @@ composer.addEventListener('submit', async (e) => {
       if (type === 'passages') {
         setIdx = passageSets.push(payload.passages || []) - 1;
         renderPassages(setIdx);
+      } else if (type === 'quotes') {
+        quoteChecks = payload.quotes;
       } else if (type === 'error') {
         throw new Error(payload.message || 'Generation failed');
       } else if (payload.delta) {
@@ -1298,7 +1495,11 @@ composer.addEventListener('submit', async (e) => {
     });
 
     ensureAnswerMsg();
-    if (answerRaw) history.push({ role: 'assistant', content: answerRaw, setIdx });
+    if (quoteChecks && bubble) annotateQuotes(bubble, quoteChecks);
+    if (answerRaw) {
+      history.push({ role: 'assistant', content: answerRaw, setIdx,
+                     quotes: quoteChecks || undefined });
+    }
   } catch (err) {
     stopThinking(typingWrap);
     if (err.name === 'AbortError') {
@@ -1342,7 +1543,8 @@ function restoreConversation() {
     } else {
       const set = turn.setIdx >= 0 ? passageSets[turn.setIdx] : null;
       const refs = set ? set.map(p => p.reference) : [];
-      addMessage('assistant', formatAnswer(turn.content), refs, set ? turn.setIdx : undefined);
+      const wrap = addMessage('assistant', formatAnswer(turn.content), refs, set ? turn.setIdx : undefined);
+      if (turn.quotes) annotateQuotes(wrap.querySelector('.bubble'), turn.quotes);
     }
   }
   const last = [...history].reverse().find(t => t.setIdx >= 0 && passageSets[t.setIdx]);
