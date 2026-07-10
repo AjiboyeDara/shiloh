@@ -37,9 +37,38 @@ class ChapterResponse(BaseModel):
     verses: List[ChapterVerse]
 
 
+class QuoteCheck(BaseModel):
+    quote: str
+    status: str  # "verified" | "mismatch" | "not_found"
+    reference: Optional[str] = None
+    actual: Optional[str] = None  # KJV wording, set when status is "mismatch"
+
+
 class ChatResponse(BaseModel):
     answer: str
     passages: List[PassageResult]
+    quote_checks: List[QuoteCheck] = []
+
+
+class StrongsEntry(BaseModel):
+    number: str  # e.g. "G26" or "H430"
+    lemma: str = ""
+    translit: str = ""
+    pron: str = ""
+    definition: str = ""
+    kjv_def: str = ""
+
+
+class WordOccurrence(BaseModel):
+    reference: str
+    text: str
+
+
+class WordStudyResponse(BaseModel):
+    word: str
+    strongs: List[StrongsEntry] = []
+    count: int
+    occurrences: List[WordOccurrence] = []
 
 
 class SearchRequest(BaseModel):

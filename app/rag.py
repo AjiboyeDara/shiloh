@@ -42,6 +42,9 @@ cite them inline with the bracketed number, e.g. [1] or [2], placed right \
 after the claim it supports. You may also name the reference \
 (Book Chapter:Verse) in prose, but always include the bracketed number too \
 so the citation can be linked to the passage. Quote sparingly.
+- When you quote scripture, reproduce the KJV wording exactly inside double \
+quotation marks, marking any omitted words with "...". Never put a \
+paraphrase inside quotation marks.
 - If the passages don't fully answer the question, say so plainly rather \
 than filling gaps with speculation.
 - Offer historical/literary context when it aids understanding (authorship, \

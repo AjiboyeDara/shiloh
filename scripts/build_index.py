@@ -15,6 +15,7 @@ from sentence_transformers import SentenceTransformer
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
+MODERN_PATH = os.path.join(DATA_DIR, "bsb_verses.json")
 INDEX_DIR = os.path.join(DATA_DIR, "chroma_index")
 
 CHUNK_SIZE = 5      # verses per chunk
@@ -60,33 +61,21 @@ def make_chunks(verses):
     return chunks
 
 
-def build():
-    print("Loading verses...")
-    verses = load_verses()
-    print(f"Loaded {len(verses)} verses.")
-
-    print("Chunking...")
+def index_collection(client, model, name, verses):
+    print(f"[{name}] chunking {len(verses)} verses...")
     chunks = make_chunks(verses)
-    print(f"Created {len(chunks)} chunks.")
-
-    print(f"Loading embedding model ({EMBED_MODEL})... this downloads once.")
-    model = SentenceTransformer(EMBED_MODEL)
-
-    print("Embedding chunks (this can take a few minutes)...")
-    texts = [c["text"] for c in chunks]
+    print(f"[{name}] created {len(chunks)} chunks; embedding (this can take a few minutes)...")
     embeddings = model.encode(
-        texts, batch_size=64, show_progress_bar=True, normalize_embeddings=True
+        [c["text"] for c in chunks],
+        batch_size=64, show_progress_bar=True, normalize_embeddings=True,
     )
 
-    print("Writing to Chroma index...")
-    os.makedirs(INDEX_DIR, exist_ok=True)
-    client = chromadb.PersistentClient(path=INDEX_DIR)
     # Fresh collection each build
     try:
-        client.delete_collection("bible_kjv")
+        client.delete_collection(name)
     except Exception:
         pass
-    collection = client.create_collection("bible_kjv")
+    collection = client.create_collection(name)
 
     batch = 500
     for i in range(0, len(chunks), batch):
@@ -103,7 +92,26 @@ def build():
                 "reference": c["reference"],
             } for c in batch_chunks],
         )
-        print(f"  indexed {min(i + batch, len(chunks))}/{len(chunks)}")
+        print(f"  [{name}] indexed {min(i + batch, len(chunks))}/{len(chunks)}")
+
+
+def build():
+    print(f"Loading embedding model ({EMBED_MODEL})... this downloads once.")
+    model = SentenceTransformer(EMBED_MODEL)
+    os.makedirs(INDEX_DIR, exist_ok=True)
+    client = chromadb.PersistentClient(path=INDEX_DIR)
+
+    index_collection(client, model, "bible_kjv", load_verses())
+
+    # Modern-English mirror (BSB) — retrieval only, display stays KJV. It
+    # bridges the archaic-vocabulary gap ("anxiety" vs "take no thought").
+    if os.path.exists(MODERN_PATH):
+        with open(MODERN_PATH, encoding="utf-8") as f:
+            index_collection(client, model, "bible_modern", json.load(f))
+    else:
+        print(f"No modern translation at {MODERN_PATH}; skipping bible_modern. "
+              "Run scripts/download_bible.py to fetch it (recommended: it "
+              "substantially improves retrieval of thematic questions).")
 
     print(f"Done. Index stored at {INDEX_DIR}")
 
