@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -18,6 +19,7 @@ from app.models import (
     PassageResult,
     SearchRequest,
     SearchResponse,
+    WordStudyResponse,
 )
 import requests
 
@@ -31,11 +33,21 @@ from app.rag import (
     stream_answer,
 )
 from app.retrieval import canonical_book, get_chapter, retrieve
+from app.verify import verify_quotes
+from app.word_study import word_study
 
 OLLAMA_DOWN_MSG = (
     "Couldn't reach the local Ollama server. Start it with `ollama serve` "
     "(or switch to another provider in the model picker)."
 )
+
+
+def _safe_verify(answer_text, passages):
+    """Quote verification is an annotation, never a reason to fail a reply."""
+    try:
+        return verify_quotes(answer_text, passages)
+    except Exception:
+        return []
 
 
 def _check_provider_key(provider: str):
@@ -139,6 +151,18 @@ def chapter(book: str, chapter: int):
     )
 
 
+@app.get("/api/word-study", response_model=WordStudyResponse)
+def word_study_endpoint(word: str):
+    """Strong's entries + KJV concordance for one English word."""
+    word = word.strip()
+    if not re.fullmatch(r"[A-Za-z][A-Za-z'-]{0,23}", word):
+        raise HTTPException(
+            status_code=422,
+            detail="Provide a single English word (letters only).",
+        )
+    return word_study(word)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     provider = (req.provider or PROVIDER).lower()
@@ -156,6 +180,7 @@ def chat(req: ChatRequest):
     return ChatResponse(
         answer=answer_text,
         passages=[PassageResult(**p) for p in passages],
+        quote_checks=_safe_verify(answer_text, passages),
     )
 
 
@@ -178,8 +203,13 @@ def chat_stream(req: ChatRequest):
                 provider=provider, model=req.model,
             )
             yield sse("passages", {"passages": passages})
+            answer_parts = []
             for chunk in deltas:
+                answer_parts.append(chunk)
                 yield sse(None, {"delta": chunk})
+            checks = _safe_verify("".join(answer_parts), passages)
+            if checks:
+                yield sse("quotes", {"quotes": checks})
             yield sse("done", {})
         except requests.exceptions.ConnectionError:
             yield sse("error", {"message": OLLAMA_DOWN_MSG})

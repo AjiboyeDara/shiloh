@@ -24,9 +24,23 @@ def get_embedder():
 
 
 @lru_cache(maxsize=1)
+def _chroma_client():
+    return chromadb.PersistentClient(path=INDEX_DIR)
+
+
+@lru_cache(maxsize=1)
 def get_collection():
-    client = chromadb.PersistentClient(path=INDEX_DIR)
-    return client.get_collection("bible_kjv")
+    return _chroma_client().get_collection("bible_kjv")
+
+
+@lru_cache(maxsize=1)
+def get_modern_collection():
+    """Modern-English (BSB) mirror of the index — retrieval only, the app
+    always displays KJV. None when the index was built without it."""
+    try:
+        return _chroma_client().get_collection("bible_modern")
+    except Exception:
+        return None
 
 
 # ── Hybrid search: dense vectors + BM25, fused with RRF ─────────────────
@@ -47,6 +61,11 @@ _KJV_SYNONYMS = {
 _RRF_K = 60          # standard reciprocal-rank-fusion constant
 _CANDIDATES = 50     # candidates pulled from each retriever before fusing
 
+# Diversity cap: at most this many fused results per (book, chapter), so a
+# thematic question spans the canon instead of one strong chapter filling
+# every slot. Env-overridable for eval experiments.
+MAX_PER_CHAPTER = int(os.environ.get("MAX_PER_CHAPTER", 2))
+
 
 def _expand_query(query: str):
     low = query.lower()
@@ -63,20 +82,42 @@ def _tokenize(text: str):
 
 @lru_cache(maxsize=1)
 def _bm25_index():
-    """Lexical index over the same chunks as the vector index. Built
-    lazily on first search (a few seconds), then cached."""
+    """Lexical index over the same chunks as the vector indexes (KJV plus
+    the modern mirror when present, so both archaic and modern wording get
+    exact-term matches). Built lazily on first search, then cached."""
     try:
         from rank_bm25 import BM25Okapi
     except ImportError:
         return None
     data = get_collection().get()  # ids, documents, metadatas
+    modern = get_modern_collection()
+    if modern is not None:
+        m = modern.get()
+        data = {
+            "ids": data["ids"] + m["ids"],
+            "documents": data["documents"] + m["documents"],
+            "metadatas": data["metadatas"] + m["metadatas"],
+        }
     return BM25Okapi([_tokenize(d) for d in data["documents"]]), data
+
+
+def _kjv_text(meta):
+    """Rebuild a chunk's display text from the KJV verses it spans, so a
+    chunk found via the modern index still renders as KJV."""
+    vs, ve = meta.get("verse_start"), meta.get("verse_end")
+    if vs is None:
+        return None
+    verses = _load_all_verses().get((meta["book"], meta["chapter"]), [])
+    window = [v for v in verses if vs <= v["verse"] <= ve]
+    if not window:
+        return None
+    return " ".join(f"{v['verse']}. {v['text']}" for v in window)
 
 
 def _as_passage(doc, meta):
     return {
         "reference": meta["reference"],
-        "text": doc,
+        "text": _kjv_text(meta) or doc,
         "book": meta["book"],
         "chapter": meta["chapter"],
         "verse_start": meta.get("verse_start"),
@@ -92,16 +133,29 @@ def search_passages(query: str, top_k: int = 6):
     collection = get_collection()
 
     query_embedding = model.encode([query], normalize_embeddings=True)[0].tolist()
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=max(top_k, _CANDIDATES),
-    )
 
-    # id -> [rrf_score, doc, meta]
+    # id -> [rrf_score, doc, meta]; the same chunk found by several
+    # retrievers accumulates contributions.
     fused = {}
-    for rank, (id_, doc, meta) in enumerate(zip(
-            results["ids"][0], results["documents"][0], results["metadatas"][0])):
-        fused[id_] = [1.0 / (_RRF_K + rank + 1), doc, meta]
+
+    def fuse_ranking(ids, docs, metas):
+        for rank, (id_, doc, meta) in enumerate(zip(ids, docs, metas)):
+            contribution = 1.0 / (_RRF_K + rank + 1)
+            if id_ in fused:
+                fused[id_][0] += contribution
+            else:
+                fused[id_] = [contribution, doc, meta]
+
+    dense_collections = [collection]
+    modern = get_modern_collection()
+    if modern is not None:
+        dense_collections.append(modern)
+    for coll in dense_collections:
+        results = coll.query(
+            query_embeddings=[query_embedding],
+            n_results=max(top_k, _CANDIDATES),
+        )
+        fuse_ranking(results["ids"][0], results["documents"][0], results["metadatas"][0])
 
     bm = _bm25_index()
     if bm is not None:
@@ -119,8 +173,26 @@ def search_passages(query: str, top_k: int = 6):
             else:
                 fused[id_] = [contribution, data["documents"][i], data["metadatas"][i]]
 
-    best = sorted(fused.values(), key=lambda x: -x[0])[:top_k]
-    return [_as_passage(doc, meta) for _, doc, meta in best]
+    ranked = sorted(fused.values(), key=lambda x: -x[0])
+    return [_as_passage(doc, meta) for _, doc, meta in _diversify(ranked, top_k)]
+
+
+def _diversify(ranked, top_k):
+    """Greedy pick over the fused ranking with a per-chapter cap. Backfills
+    from the skipped chunks (in score order) if there aren't enough distinct
+    chapters, so a narrow question about one chapter still fills top_k."""
+    picked, skipped, counts = [], [], {}
+    for item in ranked:
+        meta = item[2]
+        key = (meta["book"], meta["chapter"])
+        if counts.get(key, 0) >= MAX_PER_CHAPTER:
+            skipped.append(item)
+            continue
+        counts[key] = counts.get(key, 0) + 1
+        picked.append(item)
+        if len(picked) == top_k:
+            return picked
+    return picked + skipped[:top_k - len(picked)]
 
 
 VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
@@ -294,18 +366,5 @@ def load_commentary(book: str, chapter: int):
     return data.get(str(chapter))
 
 
-def load_strongs(strongs_number: str):
-    """
-    Optional: looks up a Strong's number if the user has placed a file at
-    resources/strongs/strongs.json in the format:
-    { "H430": "Elohim - God, gods...", "G26": "agape - love...", ... }
-
-    Source suggestion (public domain): OpenScriptures Strong's dictionary
-    data, or Blue Letter Bible's downloadable lexicon.
-    """
-    path = os.path.join(RESOURCES_DIR, "strongs", "strongs.json")
-    if not os.path.exists(path):
-        return None
-    with open(path, encoding="utf-8") as f:
-        data = json.load(f)
-    return data.get(strongs_number)
+# Strong's dictionary lookups live in app/word_study.py, which reads
+# resources/strongs/strongs.json (fetched by scripts/fetch_strongs.py).

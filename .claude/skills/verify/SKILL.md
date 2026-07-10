@@ -11,8 +11,8 @@ description: Build/launch/drive recipe for verifying Shiloh (FastAPI + single-fi
 .venv/bin/uvicorn app.main:app --port 8901   # serves API + frontend at /
 ```
 
-Needs `data/kjv_verses.json` + `data/chroma_index/` (run `scripts/download_bible.py`
-then `scripts/build_index.py` once). Default LLM provider is local Ollama —
+Needs `data/kjv_verses.json` + `data/chroma_index/` (run `scripts/setup.py` once —
+it fetches KJV + BSB texts, cross-references, Strong's, and builds both indexes). Default LLM provider is local Ollama —
 check it's up with `curl -s localhost:11434/api/tags`. First request loads the
 embedding model (~5s) and builds the BM25 index lazily.
 

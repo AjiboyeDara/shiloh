@@ -43,6 +43,69 @@ def download():
     print("Download complete.")
 
 
+# ── Modern-English retrieval translation ─────────────────────────────────
+# The KJV's archaic vocabulary is the single biggest retrieval failure
+# mode: questions say "anxiety" and "patience" where the KJV says "take no
+# thought" and "longsuffering". The Berean Standard Bible (dedicated to the
+# public domain, CC0) is indexed alongside the KJV for retrieval only —
+# the app always displays the KJV text.
+
+BSB_URL = "https://raw.githubusercontent.com/scrollmapper/bible_databases/master/formats/json/BSB.json"
+BSB_RAW_PATH = os.path.join(DATA_DIR, "bsb_raw.json")
+BSB_OUT_PATH = os.path.join(DATA_DIR, "bsb_verses.json")
+
+
+def _normalize_book_name(name):
+    """Source book names -> ours: 'I Corinthians' -> '1 Corinthians',
+    'Revelation of John' -> 'Revelation'."""
+    name = {"Revelation of John": "Revelation"}.get(name, name)
+    for roman, digit in (("III ", "3 "), ("II ", "2 "), ("I ", "1 ")):
+        if name.startswith(roman):
+            return digit + name[len(roman):]
+    return name
+
+
+def download_bsb():
+    if os.path.exists(BSB_RAW_PATH):
+        print(f"Raw file already exists at {BSB_RAW_PATH}, skipping download.")
+        return
+    print(f"Downloading BSB text from {BSB_URL} ...")
+    urllib.request.urlretrieve(BSB_URL, BSB_RAW_PATH)
+    print("Download complete.")
+
+
+def normalize_bsb():
+    with open(BSB_RAW_PATH, encoding="utf-8") as f:
+        data = json.load(f)
+
+    verses, unknown = [], set()
+    for book in data["books"]:
+        name = _normalize_book_name(book["name"])
+        if name not in BOOK_NAMES:
+            unknown.add(name)
+            continue
+        for chapter in book["chapters"]:
+            for v in chapter["verses"]:
+                text = re.sub(r"\s+", " ", v["text"]).strip()
+                if not text:
+                    continue
+                verses.append({
+                    "book": name,
+                    "chapter": chapter["chapter"],
+                    "verse": v["verse"],
+                    "text": text,
+                })
+    if unknown:
+        raise ValueError(
+            f"Unrecognized book names from BSB source: {sorted(unknown)}. "
+            "The source format may have changed; update _normalize_book_name."
+        )
+
+    with open(BSB_OUT_PATH, "w", encoding="utf-8") as f:
+        json.dump(verses, f, ensure_ascii=False, indent=1)
+    print(f"Wrote {len(verses)} verses to {BSB_OUT_PATH}")
+
+
 # A marginal note: brace content with a colon ('{still...: Heb. waters of
 # quietness}'), optionally followed by a short malformed tail ending in a
 # stray '}' (the source has one of these in Hebrews 10:34).
@@ -100,3 +163,5 @@ def normalize():
 if __name__ == "__main__":
     download()
     normalize()
+    download_bsb()
+    normalize_bsb()

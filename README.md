@@ -21,11 +21,17 @@ question ──▶ embed query ──▶ search local vector index ──▶ top
   (`all-MiniLM-L6-v2`, runs on CPU, no API key needed), and stored in a
   local Chroma vector index; a BM25 lexical index over the same chunks is
   fused in with reciprocal-rank fusion so exact KJV wording still matches.
-  Scripture references written in the question ("Romans 8", "John 3:16")
-  are parsed out and always included first, and a small synonym map
-  bridges modern vocabulary to KJV wording ("Holy Spirit" → "Holy Ghost",
-  "love" → "charity"). No Bible text ever leaves your machine during
-  retrieval.
+  To close the archaic-vocabulary gap ("anxiety" vs "take no thought"),
+  the Berean Standard Bible (public domain, modern English) is indexed in
+  parallel as a retrieval-only mirror — search runs over both, the app
+  always displays KJV. Fused results carry a light per-chapter diversity
+  cap so thematic questions span the canon. Scripture references written
+  in the question ("Romans 8", "John 3:16") are parsed out and always
+  included first, and a small synonym map bridges the most common
+  remaining gaps ("Holy Spirit" → "Holy Ghost"). No Bible text ever
+  leaves your machine during retrieval. Retrieval quality is measured by
+  a golden-set eval (`scripts/eval_retrieval.py`) — run it before and
+  after any retrieval change.
 - **Generation**: retrieved passages + your question go to an LLM to produce
   the answer, streamed token by token to the UI (`/api/chat/stream`), with
   numbered `[n]` citations that link back to the retrieved passages.
@@ -33,10 +39,17 @@ question ──▶ embed query ──▶ search local vector index ──▶ top
   via [Ollama](https://ollama.com) (the default, with no API key so nothing
   leaves your machine), Google Gemini, or the Anthropic API. The generation
   calls are isolated in `app/rag.py` so adding another provider is easy.
-- **Extras**: cross-references ship via a one-command fetch script (see
-  below); chapter commentary and Strong's word definitions are supported as
-  optional local resource files that `app/retrieval.py` picks up
-  automatically.
+- **Quote verification**: every scripture quotation in an answer is
+  checked word-for-word against the KJV (`app/verify.py`). Verbatim quotes
+  are marked verified with their verse reference; near-quotes are flagged
+  with the real wording; inventions are called out. Verse mentions in
+  answers ("v. 26") are clickable and open the chapter at that verse.
+- **Word study**: click any word in a retrieved passage to see the Strong's
+  entries behind it (original Hebrew/Greek, transliteration, definition,
+  how the KJV renders it) plus a concordance of everywhere it occurs.
+- **Extras**: cross-references and Strong's dictionaries are fetched by
+  `scripts/setup.py` out of the box; chapter commentary is supported as an
+  optional local resource file that the app picks up automatically.
 
 ## Quickstart (local)
 
@@ -52,9 +65,9 @@ cp .env.example .env
 ollama pull llama3.2
 # To use Claude instead, set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in .env.
 
-python scripts/download_bible.py          # fetches KJV text (~5MB, one-time)
-python scripts/build_index.py             # builds the local embedding index (a few minutes)
-python scripts/fetch_cross_references.py  # optional: verse cross-references (~4MB)
+# One command: fetches the KJV + BSB texts, cross-references, and Strong's
+# dictionaries, then builds the local embedding indexes (a few minutes).
+python scripts/setup.py
 
 uvicorn app.main:app --reload
 ```
@@ -84,43 +97,47 @@ python scripts/fetch_cross_references.py
 After that, every retrieved passage in the UI shows "See also" chips that
 open the referenced chapter inline.
 
-## Adding commentary or Strong's data
+## Adding commentary
 
-These are optional and off by default. Drop in a file at any of these paths
-and the app will pick it up automatically, with no code changes needed:
+Chapter commentary is optional and off by default — it's the one resource
+without a bundled fetch script (a reliably machine-readable public-domain
+source is still wanted; writing that fetcher is a great first
+contribution). Drop in a file and the app picks it up automatically:
 
 | Resource | Path | Format |
 |---|---|---|
 | Commentary | `resources/commentary/<Book>.json` | `{"1": "commentary for chapter 1", "2": "...", ...}` |
-| Strong's numbers | `resources/strongs/strongs.json` | `{"G26": "agape - love...", "H430": "Elohim - God...", ...}` |
 
-Good public-domain sources to build these from:
-- **Commentary**: Matthew Henry's Concise Commentary, available via
-  [ccel.org](https://ccel.org) or bundled in the
-  [scrollmapper/bible_databases](https://github.com/scrollmapper/bible_databases) repo.
-- **Strong's**: [OpenScriptures Strong's dictionary data](https://github.com/openscriptures/strongs)
-  (GitHub, public domain).
+Good public-domain source: Matthew Henry's Concise Commentary, available
+via [ccel.org](https://ccel.org).
 
-A short conversion script that reshapes either of these into the formats
-above (like `scripts/fetch_cross_references.py` does for cross-references)
-is a natural first contribution if you want to help extend this project.
+Strong's dictionaries are already fetched by `scripts/setup.py` (or
+directly via `scripts/fetch_strongs.py`) from
+[OpenScriptures](https://github.com/openscriptures/strongs) (CC-BY-SA) and
+power the click-a-word study panel.
 
 ## Project structure
 
 ```
 app/
-  main.py         FastAPI app + routes (/api/chat, /api/chat/stream, /api/search, /api/chapter)
+  main.py         FastAPI app + routes (/api/chat, /api/chat/stream, /api/search, /api/chapter, /api/word-study)
   rag.py          Prompting + LLM calls (blocking + streaming)
   retrieval.py    Hybrid search, reference parsing, resource lookups
+  verify.py       Word-for-word quote verification against the KJV
+  word_study.py   Strong's lookups + concordance for a KJV word
   models.py       Request/response schemas
 scripts/
-  download_bible.py          Fetches + normalizes the KJV text
-  build_index.py             Chunks, embeds, and indexes it
+  setup.py                   One-command setup (runs everything below)
+  download_bible.py          Fetches + normalizes the KJV and BSB texts
+  build_index.py             Chunks, embeds, and indexes both translations
   fetch_cross_references.py  Fetches + converts cross-reference data
+  fetch_strongs.py           Fetches + merges the Strong's dictionaries
+  eval_retrieval.py          Golden-set retrieval eval (recall@k, hit@k)
+  golden_set.json            ~30 thematic questions with expected passages
 frontend/
   index.html      Single-file chat UI (no build step)
-tests/            pytest suite (retrieval, chunking, API)
-resources/        Cross-refs + optional commentary/Strong's
+tests/            pytest suite (retrieval, chunking, verification, API)
+resources/        Cross-refs + Strong's + optional commentary
 data/             Generated at setup time (gitignored)
 ```
 
@@ -148,9 +165,11 @@ its publisher.
 
 - Multi-translation comparison view
 - Reading plans / study guides generated from a theme
-- Original-language word study mode (Strong's + morphology)
-- Indexing a modern public-domain translation (WEB) alongside the KJV to
-  further close the modern-vocabulary retrieval gap
+- A Strong's-tagged KJV so word study resolves the exact original word per
+  verse (today it lists candidates via the dictionaries' KJV renderings)
+- Commentary fetch script (Matthew Henry) for the existing commentary hook
+- A stronger embedding model, measured with `scripts/eval_retrieval.py`
+  (`all-MiniLM-L6-v2` is the current retrieval bottleneck)
 
 ## License
 
