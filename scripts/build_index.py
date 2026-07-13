@@ -9,9 +9,14 @@ rather than single disconnected verses.
 """
 import json
 import os
+import sys
 
 import chromadb
 from sentence_transformers import SentenceTransformer
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from app.retrieval import EMBED_MODEL  # noqa: E402  (index + query must embed alike)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
@@ -20,7 +25,6 @@ INDEX_DIR = os.path.join(DATA_DIR, "chroma_index")
 
 CHUNK_SIZE = 5      # verses per chunk
 CHUNK_STRIDE = 3    # overlap between consecutive chunks
-EMBED_MODEL = "all-MiniLM-L6-v2"
 
 
 def load_verses():

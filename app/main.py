@@ -30,6 +30,7 @@ from app.rag import (
     OLLAMA_URL,
     PROVIDER,
     answer_question,
+    repair_quotes,
     stream_answer,
 )
 from app.retrieval import canonical_book, get_chapter, retrieve
@@ -198,7 +199,7 @@ def chat_stream(req: ChatRequest):
 
     def event_stream():
         try:
-            passages, deltas = stream_answer(
+            passages, deltas, messages = stream_answer(
                 req.message, history=req.history, top_k=req.top_k,
                 provider=provider, model=req.model,
             )
@@ -207,7 +208,15 @@ def chat_stream(req: ChatRequest):
             for chunk in deltas:
                 answer_parts.append(chunk)
                 yield sse(None, {"delta": chunk})
-            checks = _safe_verify("".join(answer_parts), passages)
+            answer_text = "".join(answer_parts)
+            # If the answer misquotes scripture, run one repair pass and
+            # replace the streamed text client-side via a `revision` event.
+            revised = repair_quotes(messages, answer_text, passages,
+                                    provider=provider, model=req.model)
+            if revised != answer_text:
+                answer_text = revised
+                yield sse("revision", {"answer": answer_text})
+            checks = _safe_verify(answer_text, passages)
             if checks:
                 yield sse("quotes", {"quotes": checks})
             yield sse("done", {})

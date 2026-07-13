@@ -12,7 +12,7 @@ import re
 
 import requests
 
-from app.retrieval import load_commentary, retrieve
+from app.retrieval import expanded_text, load_commentary, retrieve
 
 PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
 MODEL = os.environ.get("CHAT_MODEL", "claude-sonnet-4-5")
@@ -118,10 +118,26 @@ def _is_disallowed(message: str) -> bool:
     return any(pat.search(text) for pat in _HARM_PATTERNS)
 
 
+# Retrieved chunks are widened to their surrounding chapter in the prompt
+# (cards in the UI still show the tight passage), so narratives arrive whole
+# and the model never has to invent how a story ends. Expansion proceeds in
+# rank order until the verse budget is spent; the rest stay tight.
+EXPAND_VERSE_BUDGET = int(os.environ.get("EXPAND_VERSE_BUDGET", 150))
+
+
 def build_context(passages, commentary_snippets=None):
-    parts = []
+    parts, budget = [], EXPAND_VERSE_BUDGET
     for i, p in enumerate(passages, start=1):
-        parts.append(f"[{i}] {p['reference']}\n{p['text']}")
+        text, ref = p["text"], p["reference"]
+        if budget > 0:
+            etext, eref, count = expanded_text(p)
+            if count and count <= budget:
+                text, ref = etext, eref
+                budget -= count
+        # The header shows only the (possibly widened) range: annotating it
+        # with the original tight reference makes models treat the extra
+        # verses as "not really provided" and refuse to use them.
+        parts.append(f"[{i}] {ref}\n{text}")
     context = "\n\n".join(parts)
     if commentary_snippets:
         context += "\n\nCommentary notes:\n" + "\n\n".join(commentary_snippets)
@@ -185,25 +201,76 @@ def answer_question(message: str, history=None, top_k: int = 6,
         return REFUSAL_MESSAGE, []
 
     messages, passages = _prepare(message, history=history, top_k=top_k)
+    answer_text = _generate(messages, provider, model)
+    answer_text = repair_quotes(messages, answer_text, passages, provider, model)
+    return answer_text, passages
 
+
+def _generate(messages, provider=None, model=None):
     provider = (provider or PROVIDER).lower()
     if provider == "ollama":
-        answer_text = _generate_ollama(messages, model or OLLAMA_MODEL)
-    elif provider == "gemini":
-        answer_text = _generate_gemini(messages, model or GEMINI_MODEL)
-    else:
-        answer_text = _generate_anthropic(messages, model or MODEL)
+        return _generate_ollama(messages, model or OLLAMA_MODEL)
+    if provider == "gemini":
+        return _generate_gemini(messages, model or GEMINI_MODEL)
+    return _generate_anthropic(messages, model or MODEL)
 
-    return answer_text, passages
+
+def _flagged(checks):
+    return [c for c in checks if c["status"] != "verified"]
+
+
+def repair_quotes(messages, answer, passages, provider=None, model=None):
+    """One correction pass when the answer misquotes scripture: the flagged
+    quotes and the real KJV wording go back to the model, and the revision
+    is kept only if it actually verifies better. Never raises — a repair
+    failure just means the original answer stands."""
+    from app.verify import verify_quotes
+    try:
+        bad = _flagged(verify_quotes(answer, passages))
+        if not bad:
+            return answer
+        issues = []
+        for c in bad:
+            if c["status"] == "mismatch":
+                issues.append(
+                    f'- You wrote: "{c["quote"]}"\n'
+                    f'  The KJV at {c["reference"]} actually reads: "{c["actual"]}"'
+                )
+            else:
+                issues.append(
+                    f'- You wrote: "{c["quote"]}" — no such text exists in the KJV.'
+                )
+        followup = (
+            "Some quotations in your answer are not the actual KJV text:\n\n"
+            + "\n".join(issues)
+            + "\n\nRewrite your full answer. Correct each flagged quotation to "
+            "the exact KJV wording, or remove the quotation marks and "
+            "paraphrase instead. If the retrieved passages don't contain the "
+            "text you were quoting, say what the passages do say rather than "
+            "inventing scripture. Keep the [n] citations and everything that "
+            "was accurate."
+        )
+        revised = _generate(
+            messages + [{"role": "assistant", "content": answer},
+                        {"role": "user", "content": followup}],
+            provider, model,
+        )
+        if revised and len(_flagged(verify_quotes(revised, passages))) < len(bad):
+            return revised
+    except Exception:
+        pass
+    return answer
 
 
 def stream_answer(message: str, history=None, top_k: int = 6,
                   provider: str = None, model: str = None):
-    """Like answer_question, but returns (passages, generator) where the
-    generator yields the answer text incrementally."""
+    """Like answer_question, but returns (passages, generator, messages)
+    where the generator yields the answer text incrementally. `messages` is
+    the assembled prompt, so the caller can run repair_quotes on the
+    finished answer."""
     # Same defense-in-depth gate as answer_question, on the streaming path.
     if _is_disallowed(message):
-        return [], iter([REFUSAL_MESSAGE])
+        return [], iter([REFUSAL_MESSAGE]), []
 
     messages, passages = _prepare(message, history=history, top_k=top_k)
 
@@ -214,7 +281,7 @@ def stream_answer(message: str, history=None, top_k: int = 6,
         gen = _stream_gemini(messages, model or GEMINI_MODEL)
     else:
         gen = _stream_anthropic(messages, model or MODEL)
-    return passages, gen
+    return passages, gen, messages
 
 
 def _generate_gemini(messages, model):
@@ -261,7 +328,9 @@ def _generate_ollama(messages, model):
             "model": model,
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
             "stream": False,
-            "options": {"num_predict": 1200},
+            # num_ctx: Ollama's 4096 default would silently truncate the
+            # expanded passage context from the front of the prompt.
+            "options": {"num_predict": 1200, "num_ctx": 16384},
         },
         timeout=300,
     )
@@ -291,7 +360,7 @@ def _stream_ollama(messages, model):
             "model": model,
             "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
             "stream": True,
-            "options": {"num_predict": 1200},
+            "options": {"num_predict": 1200, "num_ctx": 16384},
         },
         timeout=300,
         stream=True,

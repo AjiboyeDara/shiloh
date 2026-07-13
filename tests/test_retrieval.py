@@ -113,6 +113,85 @@ def test_get_chapter_case_insensitive():
 
 def test_expand_query_kjv_synonyms():
     assert "holy ghost" in retrieval._expand_query("the Holy Spirit's role").lower()
+
+
+# ── context expansion ────────────────────────────────────────────────────
+
+@needs_data
+def test_expanded_text_widens_to_whole_chapter():
+    # The regression that motivated expansion: 1 Kings 3:16-20 cuts the
+    # Solomon story off before the ruling in v24-27.
+    p = _p("1 Kings", 3, 16, 20)
+    text, ref, count = retrieval.expanded_text(p)
+    assert ref == "1 Kings 3"
+    assert count == 28  # the whole chapter
+    assert "Divide the living child" in text          # v25: the ruse
+    assert "she is the mother thereof" in text        # v27: the ruling
+
+
+@needs_data
+def test_expanded_text_caps_long_chapters_around_hit():
+    p = _p("Psalms", 119, 100, 104)
+    text, ref, count = retrieval.expanded_text(p)
+    assert ref.startswith("Psalms 119:")
+    assert count == retrieval.EXPAND_MAX_VERSES
+    first, last = ref.split(":")[1].split("-")
+    assert int(last) - int(first) + 1 == retrieval.EXPAND_MAX_VERSES
+    assert int(first) <= 100 <= int(last)
+
+
+@needs_data
+def test_expanded_text_falls_back_without_verse_info():
+    p = {"book": "John", "chapter": 3, "verse_start": None, "verse_end": None,
+         "reference": "John 3", "text": "original"}
+    assert retrieval.expanded_text(p) == ("original", "John 3", 0)
+
+
+# ── relevance floor ──────────────────────────────────────────────────────
+
+def _scored(*scores):
+    return [[s, f"doc{i}", {}] for i, s in enumerate(scores)]
+
+
+def test_floor_drops_low_scoring_tail():
+    ranked = _scored(0.06, 0.05, 0.04, 0.035, 0.02, 0.01)
+    kept = retrieval._apply_floor(ranked)
+    assert [r[0] for r in kept] == [0.06, 0.05, 0.04, 0.035]
+
+
+def test_floor_keeps_flat_curves_whole():
+    ranked = _scored(0.031, 0.030, 0.029, 0.029, 0.028, 0.028)
+    assert retrieval._apply_floor(ranked) == ranked
+
+
+def test_floor_always_keeps_minimum():
+    ranked = _scored(0.06, 0.01, 0.005)
+    assert len(retrieval._apply_floor(ranked)) == retrieval.MIN_KEEP
+
+
+# ── reranking ────────────────────────────────────────────────────────────
+
+def _c(doc, book="John", chapter=3):
+    return [0.5, doc, {"book": book, "chapter": chapter}]
+
+
+class _FakeReranker:
+    def predict(self, pairs):
+        # Score by document length: longest doc wins.
+        return [len(doc) for _, doc in pairs]
+
+
+def test_rerank_orders_by_cross_encoder_score(monkeypatch):
+    monkeypatch.setattr(retrieval, "get_reranker", lambda: _FakeReranker())
+    candidates = [_c("short"), _c("the longest document"), _c("mid doc")]
+    reranked = retrieval._rerank("query", candidates)
+    assert [c[1] for c in reranked] == ["the longest document", "mid doc", "short"]
+
+
+def test_rerank_disabled_passes_through(monkeypatch):
+    monkeypatch.setattr(retrieval, "get_reranker", lambda: None)
+    candidates = [_c("a"), _c("bb"), _c("ccc")]
+    assert retrieval._rerank("query", candidates) == candidates
     assert "charity" in retrieval._expand_query("what is love?").lower()
     # Already-KJV wording isn't double-expanded.
     q = "faith hope and charity"

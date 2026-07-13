@@ -41,7 +41,7 @@ def test_chat_returns_answer_and_passages(monkeypatch):
 def test_chat_stream_emits_passages_deltas_done(monkeypatch):
     monkeypatch.setattr(
         app_main, "stream_answer",
-        lambda message, **kw: (FAKE_PASSAGES, iter(["God ", "loves ", "[1]."])),
+        lambda message, **kw: (FAKE_PASSAGES, iter(["God ", "loves ", "[1]."]), []),
     )
     res = client.post("/api/chat/stream", json={"message": "hi"})
     assert res.status_code == 200
