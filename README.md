@@ -172,7 +172,9 @@ its publisher.
   `EMBED_MODEL` and an optional cross-encoder rerank stage (`RERANK_MODEL`)
   are env-configurable to make experiments cheap. Tried so far (2026-07),
   all at or below the `all-MiniLM-L6-v2` + RRF baseline on the golden set:
-  `bge-small-en-v1.5` (with and without query prefix), reranking with
+  `bge-small-en-v1.5` (with and without query prefix; re-tested against the
+  expanded 58-question set and larger synonym map — still lost, recall@6
+  0.655 vs 0.665, hit@6 0.931 vs 0.966), reranking with
   `ms-marco-MiniLM-L-6-v2` and `bge-reranker-base` — modern-English models
   seem to misjudge KJV text, so a candidate should likely be fine-tuned or
   chosen for archaic English

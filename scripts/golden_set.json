@@ -128,6 +128,110 @@
     {
       "question": "Is there any condemnation for those who are in Christ?",
       "expected": ["Romans 8:1-4", "Romans 8:31-39"]
+    },
+    {
+      "question": "What does the Bible say about fear?",
+      "expected": ["Isaiah 41:10", "2 Timothy 1:7", "Psalms 34:4", "1 John 4:18"]
+    },
+    {
+      "question": "Does God hear our prayers?",
+      "expected": ["1 John 5:14-15", "Matthew 7:7-11", "Jeremiah 33:3"]
+    },
+    {
+      "question": "What does the Bible teach about baptism?",
+      "expected": ["Matthew 28:19", "Acts 2:38", "Romans 6:3-4"]
+    },
+    {
+      "question": "What is the Great Commission?",
+      "expected": ["Matthew 28:18-20", "Mark 16:15"]
+    },
+    {
+      "question": "Tell me the story of Daniel in the lions' den.",
+      "expected": ["Daniel 6:16-23"]
+    },
+    {
+      "question": "Tell me about Jonah and the great fish.",
+      "expected": ["Jonah 1:15-17", "Jonah 2:1-10"]
+    },
+    {
+      "question": "What happened at Pentecost?",
+      "expected": ["Acts 2:1-13"]
+    },
+    {
+      "question": "Tell me the story of the crossing of the Red Sea.",
+      "expected": ["Exodus 14:21-31"]
+    },
+    {
+      "question": "How did Jesus feed the five thousand?",
+      "expected": ["Matthew 14:15-21", "John 6:5-14"]
+    },
+    {
+      "question": "What happened when Jesus was crucified?",
+      "expected": ["Matthew 27:32-54", "Luke 23:33-46", "John 19:16-30"]
+    },
+    {
+      "question": "Tell me about the resurrection of Jesus.",
+      "expected": ["Matthew 28:1-10", "Luke 24:1-8", "John 20:1-18"]
+    },
+    {
+      "question": "What does the Bible say about faith versus works?",
+      "expected": ["James 2:14-26", "Ephesians 2:8-10", "Romans 3:28"]
+    },
+    {
+      "question": "What does the Bible say about depression and despair?",
+      "expected": ["Psalms 42:5-11", "Psalms 34:17-18", "Matthew 11:28-30"]
+    },
+    {
+      "question": "How can I deal with stress?",
+      "expected": ["Matthew 11:28-30", "Philippians 4:6-7", "Psalms 55:22", "1 Peter 5:7"]
+    },
+    {
+      "question": "What should I do when I sin?",
+      "expected": ["1 John 1:9", "Psalms 51:1-12", "Proverbs 28:13"]
+    },
+    {
+      "question": "What does the Bible say about the Sabbath?",
+      "expected": ["Exodus 20:8-11", "Genesis 2:2-3", "Mark 2:27"]
+    },
+    {
+      "question": "What is communion or the Lord's Supper?",
+      "expected": ["1 Corinthians 11:23-26", "Luke 22:19-20", "Matthew 26:26-28"]
+    },
+    {
+      "question": "What does Jesus say about divorce?",
+      "expected": ["Matthew 19:3-9", "Mark 10:2-12", "Malachi 2:16"]
+    },
+    {
+      "question": "What are the gifts of the Spirit?",
+      "expected": ["1 Corinthians 12:4-11", "Romans 12:6-8"]
+    },
+    {
+      "question": "What happens when we die?",
+      "expected": ["Ecclesiastes 12:7", "2 Corinthians 5:1-8", "John 11:25-26", "Philippians 1:21-23"]
+    },
+    {
+      "question": "What does the Bible say about patience and waiting on God?",
+      "expected": ["Isaiah 40:28-31", "Psalms 27:14", "James 5:7-8"]
+    },
+    {
+      "question": "What does the Bible say about gossip?",
+      "expected": ["Proverbs 11:13", "Proverbs 16:28", "Proverbs 26:20"]
+    },
+    {
+      "question": "Tell me the story of the woman at the well.",
+      "expected": ["John 4:5-26"]
+    },
+    {
+      "question": "What happened to Paul on the road to Damascus?",
+      "expected": ["Acts 9:1-19"]
+    },
+    {
+      "question": "How do I resist temptation?",
+      "expected": ["1 Corinthians 10:13", "James 4:7", "Matthew 4:1-11"]
+    },
+    {
+      "question": "What does the Bible say about tithing and giving?",
+      "expected": ["Malachi 3:10", "2 Corinthians 9:6-7", "Luke 6:38"]
     }
   ]
 }

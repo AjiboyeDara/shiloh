@@ -79,7 +79,15 @@ def index_collection(client, model, name, verses):
         client.delete_collection(name)
     except Exception:
         pass
-    collection = client.create_collection(name)
+    # HNSW graph construction is randomized; at this collection size (~10k
+    # chunks) the default settings make retrieval measurably vary between
+    # otherwise identical builds. Higher ef/M costs little here and makes
+    # search near-exact, so eval numbers are reproducible.
+    collection = client.create_collection(name, metadata={
+        "hnsw:construction_ef": 200,
+        "hnsw:search_ef": 200,
+        "hnsw:M": 32,
+    })
 
     batch = 500
     for i in range(0, len(chunks), batch):

@@ -80,16 +80,57 @@ def get_modern_collection():
 # modern-vocabulary gaps in both directions.
 
 _KJV_SYNONYMS = {
-    "holy spirit": "holy ghost",
+    "holy spirit": "holy ghost comforter",
     "love": "charity",
     "anxiety": "take no thought carefulness",
     "anxious": "take no thought careful",
     "worry": "take no thought careful",
     "worrying": "take no thought careful",
+    # Named concepts whose KJV wording never uses the modern name.
+    "fruits of the spirit": "fruit of the spirit love joy peace",
+    "beatitudes": "blessed are the poor in spirit",
+    "prodigal": "younger son wasted his substance riotous living",
+    "ten commandments": "thou shalt have no other gods graven image",
+    "goliath": "sling stone philistine smote",
+    "great commission": "go ye therefore teach all nations baptizing",
+    "red sea": "waters divided dry ground",
+    "resurrection of jesus": "he is risen sepulchre",
+    "second coming": "clouds trumpet archangel descend",
+    "disciples to pray": "our father which art in heaven hallowed",
+    "lord's prayer": "our father which art in heaven hallowed",
+    "when i sin": "confess our sins faithful to forgive",
+    "when we die": "spirit return absent from the body",
+    "resist temptation": "resist the devil tempted of the devil",
+    "faith versus works": "justified by faith without works boast",
+    "lord's supper": "take eat this is my body",
+    "communion": "take eat this is my body",
+    "divorce": "putting away writing of divorcement",
+    "waiting on god": "wait upon the lord renew their strength",
+    "tithing": "tithes storehouse cheerful giver",
+    # Broader modern terms the KJV renders differently.
+    "fear": "fear not dismayed",
+    "poor": "poor needy giveth lendeth",
+    "tongue": "death and life are in the power of the tongue",
+    "wisdom": "lack wisdom ask of god",
+    "saved": "believe confess with thy mouth",
+    "flood": "waters prevailed ark",
+    "sabbath": "remember the sabbath day rested",
+    "gossip": "talebearer whisperer",
+    "enemies": "love your enemies bless them that curse",
+    "marriage": "cleave unto his wife one flesh",
+    "stress": "heavy laden cast thy burden rest",
+    "depression": "cast down disquieted hope thou in god",
+    "despair": "cast down disquieted",
+    "suffering": "fiery trial count it all joy",
+    "trials": "temptations fiery trial",
+    "baptism": "baptized buried with him",
+    "hear our prayers": "ask and it shall be given heareth us",
 }
 
 _RRF_K = 60          # standard reciprocal-rank-fusion constant
-_CANDIDATES = 50     # candidates pulled from each retriever before fusing
+# Candidates pulled from each retriever before fusing. Env-overridable for
+# eval experiments.
+_CANDIDATES = int(os.environ.get("RETRIEVAL_CANDIDATES", 50))
 
 # Diversity cap: at most this many fused results per (book, chapter), so a
 # thematic question spans the canon instead of one strong chapter filling
