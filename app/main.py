@@ -19,6 +19,7 @@ from app.models import (
     ChatRequest,
     ChatResponse,
     PassageResult,
+    PassageTextResponse,
     SearchRequest,
     SearchResponse,
     WordStudyResponse,
@@ -35,7 +36,13 @@ from app.rag import (
     repair_quotes,
     stream_answer,
 )
-from app.retrieval import canonical_book, get_chapter, retrieve
+from app.retrieval import (
+    canonical_book,
+    get_chapter,
+    get_passage_text,
+    has_bsb,
+    retrieve,
+)
 from app.verify import verify_quotes
 from app.word_study import word_study
 
@@ -189,6 +196,33 @@ def chapter(book: str, chapter: int):
     return ChapterResponse(
         book=canonical_book(book),
         chapter=chapter,
+        verses=[ChapterVerse(**v) for v in verses],
+    )
+
+
+@app.get("/api/passage-text", response_model=PassageTextResponse)
+def passage_text(book: str, chapter: int, translation: str = "kjv",
+                 start: int | None = None, end: int | None = None):
+    """One passage's verses in a given translation (whole chapter when no
+    range). BSB is display-on-demand: the chat/search payloads stay KJV."""
+    translation = translation.lower()
+    if translation not in ("kjv", "bsb"):
+        raise HTTPException(status_code=422, detail="translation must be 'kjv' or 'bsb'.")
+    if translation == "bsb" and not has_bsb():
+        raise HTTPException(
+            status_code=404,
+            detail="BSB text not downloaded; run scripts/download_bible.py.",
+        )
+    verses = get_passage_text(translation, book, chapter, start, end)
+    if not verses:
+        ref = f"{book} {chapter}" + (f":{start}-{end}" if start else "")
+        raise HTTPException(status_code=404, detail=f"No verses found for {ref}.")
+    return PassageTextResponse(
+        translation=translation,
+        book=canonical_book(book),
+        chapter=chapter,
+        verse_start=start,
+        verse_end=end,
         verses=[ChapterVerse(**v) for v in verses],
     )
 

@@ -37,6 +37,15 @@ class ChapterResponse(BaseModel):
     verses: List[ChapterVerse]
 
 
+class PassageTextResponse(BaseModel):
+    translation: str  # "kjv" | "bsb"
+    book: str
+    chapter: int
+    verse_start: Optional[int] = None
+    verse_end: Optional[int] = None
+    verses: List[ChapterVerse]
+
+
 class QuoteCheck(BaseModel):
     quote: str
     status: str  # "verified" | "mismatch" | "not_found"

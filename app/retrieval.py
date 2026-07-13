@@ -359,6 +359,41 @@ def get_chapter(book: str, chapter: int):
     return [{"verse": v["verse"], "text": v["text"]} for v in vlist]
 
 
+BSB_VERSES_PATH = os.path.join(DATA_DIR, "bsb_verses.json")
+
+
+@lru_cache(maxsize=1)
+def _load_bsb_verses():
+    """BSB verses indexed by (book, chapter), like _load_all_verses. The BSB
+    file is optional on disk; empty dict when it hasn't been downloaded."""
+    if not os.path.exists(BSB_VERSES_PATH):
+        return {}
+    with open(BSB_VERSES_PATH, encoding="utf-8") as f:
+        verses = json.load(f)
+    by_chapter = {}
+    for v in verses:
+        by_chapter.setdefault((v["book"], v["chapter"]), []).append(v)
+    for vlist in by_chapter.values():
+        vlist.sort(key=lambda v: v["verse"])
+    return by_chapter
+
+
+def has_bsb() -> bool:
+    return bool(_load_bsb_verses())
+
+
+def get_passage_text(translation: str, book: str, chapter: int,
+                     verse_start: int = None, verse_end: int = None):
+    """Ordered verses for one passage in the given translation ("kjv" or
+    "bsb"), whole chapter when the range is omitted. [] when unknown."""
+    verse_map = _load_bsb_verses() if translation == "bsb" else _load_all_verses()
+    vlist = verse_map.get((canonical_book(book), chapter), [])
+    if verse_start is not None:
+        end = verse_end if verse_end is not None else verse_start
+        vlist = [v for v in vlist if verse_start <= v["verse"] <= end]
+    return [{"verse": v["verse"], "text": v["text"]} for v in vlist]
+
+
 # ── Reference-aware retrieval ────────────────────────────────────────────
 # Semantic search alone can miss an explicitly named passage ("What does
 # Romans 8 say about the Spirit?" isn't guaranteed to retrieve Romans 8).

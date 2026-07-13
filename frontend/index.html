@@ -181,6 +181,99 @@
   }
   .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
+  /* ── Conversation menu ──────────────────── */
+  .conv-wrap { position: relative; }
+  .conv-menu {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    z-index: 30;
+    min-width: 280px;
+    max-width: 340px;
+    max-height: 70vh;
+    overflow-y: auto;
+    background: var(--bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    box-shadow: 0 12px 32px var(--glass-shadow);
+    padding: 6px;
+  }
+  .conv-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .conv-row + .conv-row { margin-top: 2px; }
+  .conv-title {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    color: var(--ink);
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    padding: 7px 9px;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 0.15s;
+  }
+  .conv-title:hover { border-color: var(--accent); }
+  .conv-title:disabled { color: var(--ink-faint); cursor: default; }
+  .conv-title:disabled:hover { border-color: transparent; }
+  .conv-row.active .conv-title { color: var(--accent); font-weight: 600; }
+  .conv-act {
+    flex: none;
+    width: 26px; height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--ink-faint);
+    font-size: 12px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .conv-act:hover { color: var(--accent); border-color: var(--accent); }
+  .conv-empty {
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    padding: 8px 9px;
+  }
+  .conv-export {
+    width: 100%;
+    margin-top: 6px;
+    border-top: 1px solid var(--rule);
+    border-radius: 0 0 4px 4px;
+    color: var(--accent);
+  }
+
+  /* ── Verse of the day (empty state) ─────── */
+  .empty-state .votd {
+    margin: 22px auto 0;
+    max-width: 460px;
+    padding-left: 14px;
+    border-left: 2px solid var(--accent);
+    text-align: left;
+  }
+  .votd-text {
+    font-family: 'Cardo', serif;
+    font-style: italic;
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+  }
+  .votd-ref {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
   /* ── Main grid ──────────────────────────── */
   main.grid {
     display: grid;
@@ -570,6 +663,38 @@
     padding: 3px 10px;
     white-space: nowrap;
   }
+  .head-tools {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tx-toggle { display: inline-flex; }
+  .tx-toggle button {
+    font-family: 'Inter', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--ink-soft);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    padding: 3px 7px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .tx-toggle button:first-child { border-radius: 4px 0 0 4px; }
+  .tx-toggle button:last-child { border-radius: 0 4px 4px 0; margin-left: -1px; }
+  .tx-toggle button.on {
+    position: relative;
+    z-index: 1;
+    color: var(--accent);
+    border-color: var(--accent);
+    background: var(--glass-bg-strong);
+  }
+  .tx-note {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 6px;
+  }
   .passage-card .verse-text {
     font-family: 'Cardo', serif;
     font-size: 16.5px;
@@ -848,6 +973,10 @@
         <select id="modelSelect" title="Choose which AI model answers"></select>
       </div>
       <span class="colophon">KJV &middot; retrieval-augmented</span>
+      <div class="conv-wrap">
+        <button class="theme-toggle" id="convMenuBtn" title="Conversations" aria-label="Show saved conversations" aria-expanded="false">&#9776;</button>
+        <div class="conv-menu" id="convMenu" hidden></div>
+      </div>
       <button class="theme-toggle" id="newChat" title="New conversation" aria-label="Start a new conversation">&#65291;</button>
       <button class="theme-toggle" id="themeToggle" title="Toggle light / dark mode" aria-label="Toggle light and dark mode"></button>
     </div>
@@ -860,6 +989,7 @@
           <div class="drop">&#10013;</div>
           <h1>Search the scriptures.</h1>
           <p>Ask about a passage, a theme, or a book. Shiloh retrieves the relevant verses first, then answers from them.</p>
+          <div class="votd" id="votd" hidden></div>
         </div>
       </div>
       <div class="composer-zone">
@@ -1059,7 +1189,14 @@ function renderPassages(setIdx, stagger = false) {
          style="${stagger ? `animation-delay: ${i * 140}ms` : 'animation: none'}">
       <div class="card-head">
         <div class="ref">${escapeHtml(p.reference)}</div>
-        <span class="cited-pill">Cited &middot; ${i + 1}</span>
+        <div class="head-tools">
+          ${bsbUnavailable ? '' : `
+          <div class="tx-toggle" role="group" aria-label="Translation">
+            <button type="button" data-t="kjv" class="on">KJV</button>
+            <button type="button" data-t="bsb">BSB</button>
+          </div>`}
+          <span class="cited-pill">Cited &middot; ${i + 1}</span>
+        </div>
       </div>
       <div class="verse-text" title="Click any word to study its original Hebrew or Greek">${escapeHtml(p.text)}</div>
       ${xrefsHtml}
@@ -1071,6 +1208,49 @@ function renderPassages(setIdx, stagger = false) {
   }).join('');
   sheetFab.hidden = false;
   sheetFab.textContent = `Passages · ${passages.length}`;
+}
+
+// Per-card KJV/BSB toggle. BSB text is fetched on first use and cached on
+// the card element; the state is ephemeral (re-renders reset to KJV), so
+// persisted conversations stay KJV-only.
+let bsbUnavailable = false;
+const KJV_TIP = 'Click any word to study its original Hebrew or Greek';
+const BSB_TIP = 'Word study works on the KJV text — switch back to KJV to click a word';
+
+async function setCardTranslation(card, t) {
+  const textEl = card.querySelector('.verse-text');
+  card._texts = card._texts || { kjv: textEl.textContent };
+  card.querySelector('.tx-note')?.remove();
+  if (t === 'bsb' && card._texts.bsb === undefined) {
+    try {
+      const params = new URLSearchParams({
+        translation: 'bsb', book: card.dataset.book, chapter: card.dataset.chapter,
+      });
+      if (card.dataset.vstart) {
+        params.set('start', card.dataset.vstart);
+        params.set('end', card.dataset.vend || card.dataset.vstart);
+      }
+      const res = await fetch(`/api/passage-text?${params}`);
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail || '';
+        if (detail.includes('not downloaded')) bsbUnavailable = true;
+        throw new Error(detail || 'BSB text unavailable');
+      }
+      const data = await res.json();
+      card._texts.bsb = data.verses.map(v => `${v.verse}. ${v.text}`).join(' ');
+    } catch (err) {
+      const note = document.createElement('div');
+      note.className = 'tx-note';
+      note.textContent = err.message;
+      textEl.after(note);
+      return;
+    }
+  }
+  textEl.textContent = card._texts[t];
+  textEl.title = t === 'bsb' ? BSB_TIP : KJV_TIP;
+  card.dataset.translation = t;
+  card.querySelectorAll('.tx-toggle button').forEach(b =>
+    b.classList.toggle('on', b.dataset.t === t));
 }
 
 // The entrance fade is one-shot: once a card has risen, drop its animation
@@ -1199,6 +1379,11 @@ async function openWordPanel(card, word) {
 }
 
 passageList.addEventListener('click', (e) => {
+  const txBtn = e.target.closest('.tx-toggle button');
+  if (txBtn) {
+    setCardTranslation(txBtn.closest('.passage-card'), txBtn.dataset.t);
+    return;
+  }
   const xref = e.target.closest('.xref-chip');
   if (xref) {
     const m = xref.dataset.ref.match(/^(.+?)\s+(\d+)(?::(\d+)(?:-(\d+))?)?$/);
@@ -1217,11 +1402,15 @@ passageList.addEventListener('click', (e) => {
   if (e.target.closest('button')) return;
   const textEl = e.target.closest('.verse-text, .chapter-panel .cv');
   if (!textEl) return;
+  // Strong's data is keyed to KJV words; no word study on BSB text.
+  if (textEl.classList.contains('verse-text') &&
+      e.target.closest('.passage-card')?.dataset.translation === 'bsb') return;
   const word = wordAtPoint(e.clientX, e.clientY);
   if (word) openWordPanel(e.target.closest('.passage-card'), word);
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (!convMenu.hidden) { closeConvMenu(); return; }
   if (passagesPane.classList.contains('open')) { closeSheet(); return; }
   const open = passageList.querySelector('.passage-card.expanded');
   if (open) toggleChapter(open);
@@ -1547,18 +1736,60 @@ composer.addEventListener('submit', async (e) => {
   }
 });
 
-// --- Conversation persistence ---
-const STORAGE_KEY = 'shiloh-conversation';
+// --- Conversation persistence (multiple conversations) ---
+// An index object lists every saved conversation; each conversation body
+// lives under its own key, so saving one never rewrites the others.
+//   'shiloh-conversations'     -> { version, activeId, order, meta }
+//   'shiloh-conversation:<id>' -> { history, passageSets }
+const CONV_INDEX_KEY = 'shiloh-conversations';
+const CONV_PREFIX = 'shiloh-conversation:';
+const LEGACY_KEY = 'shiloh-conversation'; // pre-multi-conversation storage
+
+const convMenuBtn = document.getElementById('convMenuBtn');
+const convMenu = document.getElementById('convMenu');
+let convIndex = null;
+let activeId = null;
+
+function loadConvIndex() {
+  try {
+    const idx = JSON.parse(localStorage.getItem(CONV_INDEX_KEY));
+    if (idx && Array.isArray(idx.order) && idx.meta) return idx;
+  } catch (e) {}
+  return null;
+}
+
+function saveConvIndex() {
+  try { localStorage.setItem(CONV_INDEX_KEY, JSON.stringify(convIndex)); } catch (e) {}
+}
+
+function newConvId() {
+  return 'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+}
+
+function convTitleFrom(hist) {
+  const first = hist.find(t => t.role === 'user');
+  if (!first) return 'New conversation';
+  const t = first.content.trim().replace(/\s+/g, ' ');
+  return t.length > 40 ? t.slice(0, 39).trimEnd() + '…' : t;
+}
 
 function saveConversation() {
+  if (!history.length) return; // empty conversations aren't worth a slot
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ history, passageSets }));
+    localStorage.setItem(CONV_PREFIX + activeId, JSON.stringify({ history, passageSets }));
+    const meta = convIndex.meta[activeId] || (convIndex.meta[activeId] = {});
+    if (!meta.customTitle) meta.title = convTitleFrom(history);
+    meta.updatedAt = Date.now();
+    convIndex.order = [activeId, ...convIndex.order.filter(i => i !== activeId)];
+    convIndex.activeId = activeId;
+    saveConvIndex();
+    renderConvMenu();
   } catch (e) { /* storage full or unavailable; conversation just won't persist */ }
 }
 
-function restoreConversation() {
+function restoreConversation(id) {
   let saved;
-  try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
+  try { saved = JSON.parse(localStorage.getItem(CONV_PREFIX + id)); } catch (e) { return; }
   if (!saved || !Array.isArray(saved.history) || !saved.history.length) return;
   history = saved.history;
   passageSets.length = 0;
@@ -1577,20 +1808,217 @@ function restoreConversation() {
   if (last) renderPassages(last.setIdx, true);
 }
 
-function newConversation() {
+function resetUI() {
   history = [];
   passageSets.length = 0;
   shownSet = -1;
-  localStorage.removeItem(STORAGE_KEY);
   messagesEl.innerHTML = EMPTY_STATE_HTML;
   passageList.innerHTML = PLACEHOLDER_HTML;
   sheetFab.hidden = true;
   closeSheet();
+  loadVerseOfTheDay();
+}
+
+function newConversation() {
+  saveConversation();
+  activeId = newConvId();
+  convIndex.activeId = activeId;
+  saveConvIndex();
+  resetUI();
+  renderConvMenu();
+  closeConvMenu();
   input.focus();
 }
 document.getElementById('newChat').addEventListener('click', newConversation);
 
-restoreConversation();
+function switchConversation(id) {
+  if (id === activeId) { closeConvMenu(); return; }
+  if (currentAbort) return; // don't tear the DOM out from under a stream
+  saveConversation();
+  activeId = id;
+  convIndex.activeId = id;
+  saveConvIndex();
+  resetUI();
+  restoreConversation(id);
+  renderConvMenu();
+  closeConvMenu();
+}
+
+function renameConversation(id) {
+  const meta = convIndex.meta[id];
+  if (!meta) return;
+  const name = prompt('Rename conversation', meta.title || '');
+  if (name === null || !name.trim()) return;
+  meta.title = name.trim().slice(0, 60);
+  meta.customTitle = true;
+  saveConvIndex();
+  renderConvMenu();
+}
+
+function deleteConversation(id) {
+  const title = convIndex.meta[id]?.title || 'this conversation';
+  if (!confirm(`Delete “${title}”? This can’t be undone.`)) return;
+  localStorage.removeItem(CONV_PREFIX + id);
+  convIndex.order = convIndex.order.filter(i => i !== id);
+  delete convIndex.meta[id];
+  if (id === activeId) {
+    activeId = convIndex.order[0] || newConvId();
+    convIndex.activeId = activeId;
+    resetUI();
+    if (convIndex.order.includes(activeId)) restoreConversation(activeId);
+  }
+  saveConvIndex();
+  renderConvMenu();
+}
+
+function renderConvMenu() {
+  const rows = convIndex.order.map(id => {
+    const m = convIndex.meta[id] || {};
+    return `
+    <div class="conv-row${id === activeId ? ' active' : ''}" data-id="${escapeAttr(id)}">
+      <button type="button" class="conv-title" title="${escapeAttr(m.title || '')}">${escapeHtml(m.title || 'Untitled')}</button>
+      <button type="button" class="conv-act conv-rename" title="Rename" aria-label="Rename conversation">&#9998;</button>
+      <button type="button" class="conv-act conv-delete" title="Delete" aria-label="Delete conversation">&#10005;</button>
+    </div>`;
+  }).join('');
+  convMenu.innerHTML = (rows || '<div class="conv-empty">No saved conversations yet.</div>')
+    + `<button type="button" class="conv-title conv-export"${history.length ? '' : ' disabled'}>Export as Markdown</button>`;
+}
+
+function openConvMenu() {
+  renderConvMenu();
+  convMenu.hidden = false;
+  convMenuBtn.setAttribute('aria-expanded', 'true');
+}
+function closeConvMenu() {
+  convMenu.hidden = true;
+  convMenuBtn.setAttribute('aria-expanded', 'false');
+}
+convMenuBtn.addEventListener('click', () => {
+  convMenu.hidden ? openConvMenu() : closeConvMenu();
+});
+convMenu.addEventListener('click', (e) => {
+  if (e.target.closest('.conv-export')) { exportConversationMarkdown(); return; }
+  const row = e.target.closest('.conv-row');
+  if (!row) return;
+  if (e.target.closest('.conv-rename')) renameConversation(row.dataset.id);
+  else if (e.target.closest('.conv-delete')) deleteConversation(row.dataset.id);
+  else if (e.target.closest('.conv-title')) switchConversation(row.dataset.id);
+});
+document.addEventListener('click', (e) => {
+  // A row action re-renders the menu, detaching the clicked element before
+  // this bubbles here; a detached target is never an outside click.
+  if (!convMenu.hidden && e.target.isConnected && !e.target.closest('.conv-wrap')) closeConvMenu();
+});
+
+// --- Export the current conversation as a Markdown file ---
+function exportConversationMarkdown() {
+  if (!history.length) return;
+  const title = convIndex.meta[activeId]?.title || 'Shiloh conversation';
+  const lines = [`# ${title}`, '', `_Exported ${new Date().toLocaleDateString()} from Shiloh._`, ''];
+  for (const turn of history) {
+    lines.push(turn.role === 'user' ? '## You' : '## Shiloh', '', turn.content, '');
+    if (turn.role === 'assistant' && turn.setIdx >= 0 && passageSets[turn.setIdx]) {
+      lines.push('**Passages:**', '');
+      passageSets[turn.setIdx].forEach((p, i) => lines.push(`${i + 1}. ${p.reference}`));
+      lines.push('');
+    }
+  }
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'conversation';
+  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `shiloh-${slug}-${new Date().toISOString().slice(0, 10)}.md`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// --- Verse of the day (empty state) ---
+// Refs only; the text comes from /api/chapter so it always matches the
+// canonical KJV data. Deterministic rotation by day.
+const VOTD_REFS = [
+  { book: 'Psalms', chapter: 23, verse: 1 },
+  { book: 'Psalms', chapter: 46, verse: 1 },
+  { book: 'Psalms', chapter: 119, verse: 105 },
+  { book: 'Proverbs', chapter: 3, verse: 5, verseEnd: 6 },
+  { book: 'Isaiah', chapter: 40, verse: 31 },
+  { book: 'Isaiah', chapter: 41, verse: 10 },
+  { book: 'Jeremiah', chapter: 29, verse: 11 },
+  { book: 'Lamentations', chapter: 3, verse: 22, verseEnd: 23 },
+  { book: 'Micah', chapter: 6, verse: 8 },
+  { book: 'Zephaniah', chapter: 3, verse: 17 },
+  { book: 'Matthew', chapter: 5, verse: 16 },
+  { book: 'Matthew', chapter: 6, verse: 33 },
+  { book: 'Matthew', chapter: 11, verse: 28 },
+  { book: 'John', chapter: 1, verse: 5 },
+  { book: 'John', chapter: 14, verse: 6 },
+  { book: 'John', chapter: 16, verse: 33 },
+  { book: 'Romans', chapter: 5, verse: 8 },
+  { book: 'Romans', chapter: 8, verse: 28 },
+  { book: 'Romans', chapter: 12, verse: 2 },
+  { book: '1 Corinthians', chapter: 10, verse: 13 },
+  { book: '2 Corinthians', chapter: 5, verse: 17 },
+  { book: 'Galatians', chapter: 2, verse: 20 },
+  { book: 'Ephesians', chapter: 2, verse: 8, verseEnd: 9 },
+  { book: 'Philippians', chapter: 4, verse: 6, verseEnd: 7 },
+  { book: 'Philippians', chapter: 4, verse: 13 },
+  { book: 'Colossians', chapter: 3, verse: 23 },
+  { book: 'Hebrews', chapter: 11, verse: 1 },
+  { book: 'Hebrews', chapter: 12, verse: 1, verseEnd: 2 },
+  { book: 'James', chapter: 1, verse: 5 },
+  { book: '1 Peter', chapter: 5, verse: 7 },
+  { book: '1 John', chapter: 1, verse: 9 },
+];
+
+async function loadVerseOfTheDay() {
+  const el = document.getElementById('votd');
+  if (!el) return; // empty state not on screen
+  const pick = VOTD_REFS[Math.floor(Date.now() / 864e5) % VOTD_REFS.length];
+  try {
+    const res = await fetch(`/api/chapter?book=${encodeURIComponent(pick.book)}&chapter=${pick.chapter}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    const end = pick.verseEnd || pick.verse;
+    const verses = data.verses.filter(v => v.verse >= pick.verse && v.verse <= end);
+    if (!verses.length) return;
+    const ref = `${pick.book} ${pick.chapter}:${pick.verse}` + (pick.verseEnd ? `-${pick.verseEnd}` : '');
+    el.innerHTML = `
+      <div class="votd-text">&ldquo;${verses.map(v => escapeHtml(v.text)).join(' ')}&rdquo;</div>
+      <div class="votd-ref">&mdash; ${escapeHtml(ref)}</div>`;
+    el.hidden = false;
+  } catch (e) { /* backend down; the empty state just stays plain */ }
+}
+
+// --- Bootstrap: load the index (migrating legacy storage) and restore ---
+(function initConversations() {
+  convIndex = loadConvIndex();
+  if (!convIndex) {
+    convIndex = { version: 1, activeId: null, order: [], meta: {} };
+    // One-shot migration of the old single-conversation key. The legacy key
+    // is removed only after the new keys are verified readable.
+    let legacy = null;
+    try { legacy = JSON.parse(localStorage.getItem(LEGACY_KEY)); } catch (e) {}
+    if (legacy && Array.isArray(legacy.history) && legacy.history.length) {
+      const id = newConvId();
+      try {
+        localStorage.setItem(CONV_PREFIX + id, JSON.stringify(legacy));
+        if (!JSON.parse(localStorage.getItem(CONV_PREFIX + id)).history.length) throw new Error('bad copy');
+        convIndex.order.push(id);
+        convIndex.meta[id] = { title: convTitleFrom(legacy.history), updatedAt: Date.now() };
+        convIndex.activeId = id;
+        localStorage.removeItem(LEGACY_KEY);
+      } catch (e) { /* migration failed; legacy key stays untouched */ }
+    }
+    saveConvIndex();
+  }
+  activeId = (convIndex.activeId && convIndex.order.includes(convIndex.activeId))
+    ? convIndex.activeId
+    : (convIndex.order[0] || newConvId());
+  restoreConversation(activeId);
+  renderConvMenu();
+  if (!history.length) loadVerseOfTheDay();
+})();
 </script>
 </body>
 </html>

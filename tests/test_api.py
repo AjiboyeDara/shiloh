@@ -5,13 +5,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import main as app_main
-from app.retrieval import VERSES_PATH
+from app.retrieval import BSB_VERSES_PATH, VERSES_PATH
 
 client = TestClient(app_main.app)
 
 needs_data = pytest.mark.skipif(
     not os.path.exists(VERSES_PATH),
     reason="data/kjv_verses.json missing; run scripts/download_bible.py",
+)
+
+needs_bsb = pytest.mark.skipif(
+    not os.path.exists(BSB_VERSES_PATH),
+    reason="data/bsb_verses.json missing; run scripts/download_bible.py",
 )
 
 FAKE_PASSAGES = [{
@@ -76,6 +81,41 @@ def test_chapter_endpoint():
 
 def test_chapter_endpoint_404():
     res = client.get("/api/chapter", params={"book": "Nonexistent", "chapter": 1})
+    assert res.status_code == 404
+
+
+@needs_bsb
+def test_passage_text_bsb_range():
+    res = client.get("/api/passage-text", params={
+        "translation": "bsb", "book": "John", "chapter": 3, "start": 16, "end": 17,
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["translation"] == "bsb"
+    assert [v["verse"] for v in body["verses"]] == [16, 17]
+    # Modern wording, not the KJV's "only begotten Son".
+    assert "begotten" not in body["verses"][0]["text"]
+
+
+@needs_data
+def test_passage_text_kjv_matches_chapter_slice():
+    res = client.get("/api/passage-text", params={
+        "book": "John", "chapter": 3, "start": 16, "end": 16,
+    })
+    assert res.status_code == 200
+    chapter = client.get("/api/chapter", params={"book": "John", "chapter": 3}).json()
+    assert res.json()["verses"] == [chapter["verses"][15]]
+
+
+def test_passage_text_unknown_translation_422():
+    res = client.get("/api/passage-text", params={
+        "translation": "niv", "book": "John", "chapter": 3,
+    })
+    assert res.status_code == 422
+
+
+def test_passage_text_404():
+    res = client.get("/api/passage-text", params={"book": "Nonexistent", "chapter": 1})
     assert res.status_code == 404
 
 
