@@ -140,6 +140,27 @@ def test_rate_limit_disabled_by_default(monkeypatch):
         assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
 
 
+def test_basic_auth_disabled_by_default():
+    assert client.get("/api/models").status_code == 200
+
+
+def test_basic_auth_enforced(monkeypatch):
+    import base64
+
+    monkeypatch.setattr(app_main, "APP_PASSWORD", "sw0rdfish")
+    res = client.get("/api/models")
+    assert res.status_code == 401
+    assert res.headers["www-authenticate"].startswith("Basic")
+    # /health stays open for probes
+    assert client.get("/health").status_code == 200
+    # correct password (any username) gets through
+    token = base64.b64encode(b"anyone:sw0rdfish").decode()
+    assert client.get("/api/models", headers={"Authorization": f"Basic {token}"}).status_code == 200
+    # wrong password stays out
+    bad = base64.b64encode(b"anyone:wrong").decode()
+    assert client.get("/api/models", headers={"Authorization": f"Basic {bad}"}).status_code == 401
+
+
 needs_tagged = pytest.mark.skipif(
     not os.path.exists(os.path.join(os.path.dirname(VERSES_PATH), "..",
                                     "resources", "strongs", "kjv_tagged.json")),

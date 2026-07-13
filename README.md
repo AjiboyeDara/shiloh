@@ -46,10 +46,13 @@ question ──▶ embed query ──▶ search local vector index ──▶ top
   answers ("v. 26") are clickable and open the chapter at that verse.
 - **Word study**: click any word in a retrieved passage to see the Strong's
   entries behind it (original Hebrew/Greek, transliteration, definition,
-  how the KJV renders it) plus a concordance of everywhere it occurs.
-- **Extras**: cross-references and Strong's dictionaries are fetched by
-  `scripts/setup.py` out of the box; chapter commentary is supported as an
-  optional local resource file that the app picks up automatically.
+  how the KJV renders it) plus a concordance of everywhere it occurs. With
+  the Strong's-tagged KJV fetched (`scripts/fetch_strongs_kjv.py`), the
+  entry shown is the exact word tagged at that verse, not a candidate list.
+- **Extras**: cross-references, Strong's dictionaries, the tagged KJV, and
+  Matthew Henry's chapter commentary are all fetched by `scripts/setup.py`
+  out of the box; commentary is fed into the model's context whenever a
+  retrieved passage's chapter has notes.
 
 ## Quickstart (local)
 
@@ -65,8 +68,9 @@ cp .env.example .env
 ollama pull llama3.2
 # To use Claude instead, set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in .env.
 
-# One command: fetches the KJV + BSB texts, cross-references, and Strong's
-# dictionaries, then builds the local embedding indexes (a few minutes).
+# One command: fetches the KJV + BSB texts, cross-references, Strong's
+# dictionaries, the Strong's-tagged KJV, and Matthew Henry's commentary,
+# then builds the local embedding indexes (a few minutes).
 python scripts/setup.py
 
 uvicorn app.main:app --reload
@@ -99,22 +103,25 @@ open the referenced chapter inline.
 
 ## Adding commentary
 
-Chapter commentary is optional and off by default — it's the one resource
-without a bundled fetch script (a reliably machine-readable public-domain
-source is still wanted; writing that fetcher is a great first
-contribution). Drop in a file and the app picks it up automatically:
+Matthew Henry's commentary (public domain) is fetched by `scripts/setup.py`
+(or directly via `scripts/fetch_commentary.py`) from the free-use
+[HelloAO Bible API](https://bible.helloao.org). Each chapter's overview is
+stored locally and fed into the model's context whenever a retrieved
+passage's chapter has notes.
+
+To use a different commentary, drop in files with the same shape and the
+app picks them up automatically:
 
 | Resource | Path | Format |
 |---|---|---|
 | Commentary | `resources/commentary/<Book>.json` | `{"1": "commentary for chapter 1", "2": "...", ...}` |
 
-Good public-domain source: Matthew Henry's Concise Commentary, available
-via [ccel.org](https://ccel.org).
-
 Strong's dictionaries are already fetched by `scripts/setup.py` (or
 directly via `scripts/fetch_strongs.py`) from
 [OpenScriptures](https://github.com/openscriptures/strongs) (CC-BY-SA) and
-power the click-a-word study panel.
+power the click-a-word study panel. The Strong's-tagged KJV
+(`scripts/fetch_strongs_kjv.py`, public-domain data) upgrades that panel
+from candidate entries to the exact tagged word per verse.
 
 ## Project structure
 
@@ -174,14 +181,16 @@ keep localhost development frictionless):
   over the limit returns HTTP 429. If the app sits behind a reverse proxy,
   also set `TRUST_PROXY=1` so the limit keys on `X-Forwarded-For` instead
   of the proxy's own address.
+- `APP_PASSWORD` — when set, the whole app (everything but `/health`)
+  requires HTTP Basic auth with this password (any username). The browser
+  prompts once and remembers; use it to share an instance without sharing
+  your LLM bill. Serve over HTTPS — Basic auth is plaintext otherwise.
 
 ## Roadmap ideas
 
-- Multi-translation comparison view
+- Multi-translation comparison view (per-passage KJV/BSB toggle exists;
+  side-by-side is the next step)
 - Reading plans / study guides generated from a theme
-- A Strong's-tagged KJV so word study resolves the exact original word per
-  verse (today it lists candidates via the dictionaries' KJV renderings)
-- Commentary fetch script (Matthew Henry) for the existing commentary hook
 - A stronger embedding model, measured with `scripts/eval_retrieval.py`.
   `EMBED_MODEL` and an optional cross-encoder rerank stage (`RERANK_MODEL`)
   are env-configurable to make experiments cheap. Tried so far (2026-07),

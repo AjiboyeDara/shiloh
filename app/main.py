@@ -1,14 +1,18 @@
+import base64
 import json
 import os
 import re
+import secrets
+import threading
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 
 load_dotenv()  # must run before app.rag reads provider/model settings at import
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -107,7 +111,50 @@ def rate_limit(request: Request):
         del _rate_buckets[other]
 
 
-app = FastAPI(title="Open Bible Study AI")
+def _warm_retrieval():
+    """The first query normally pays ~5s of embedding-model load plus the
+    lazy BM25 build; doing it at startup makes the first question as fast
+    as the rest. Failures are fine — the lazy path still works."""
+    try:
+        from app.retrieval import _bm25_index, get_embedder
+        get_embedder().encode(["warm"])
+        _bm25_index()
+    except Exception:
+        pass
+
+
+@asynccontextmanager
+async def _lifespan(app):
+    if os.environ.get("WARM_ON_STARTUP", "1") != "0":
+        threading.Thread(target=_warm_retrieval, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Open Bible Study AI", lifespan=_lifespan)
+
+# Optional password gate for public hosting: when APP_PASSWORD is set,
+# everything but /health requires HTTP Basic auth (any username). The
+# browser's native prompt handles the frontend; fetch() then reuses the
+# cached credentials automatically.
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+@app.middleware("http")
+async def _basic_auth(request: Request, call_next):
+    if APP_PASSWORD and request.url.path != "/health":
+        supplied = ""
+        header = request.headers.get("authorization", "")
+        if header.startswith("Basic "):
+            try:
+                supplied = base64.b64decode(header[6:]).decode().partition(":")[2]
+            except Exception:
+                supplied = ""
+        if not secrets.compare_digest(supplied, APP_PASSWORD):
+            return Response(
+                status_code=401,
+                headers={"WWW-Authenticate": 'Basic realm="Shiloh"'},
+            )
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
