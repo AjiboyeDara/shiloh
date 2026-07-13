@@ -245,6 +245,19 @@
     color: var(--ink-faint);
     padding: 8px 9px;
   }
+  .conv-filter {
+    width: 100%;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+    font-size: 12.5px;
+    color: var(--ink);
+    background: var(--field-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 6px 9px;
+    margin-bottom: 6px;
+  }
+  .conv-filter:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .conv-export {
     width: 100%;
     margin-top: 6px;
@@ -392,6 +405,23 @@
     line-height: 1.6;
     max-width: 560px;
   }
+  .msg-tools { display: flex; gap: 6px; margin-top: 6px; }
+  .msg-tools button {
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    background: transparent;
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 3px 8px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .msg-tools button:hover { color: var(--accent); border-color: var(--accent); }
+  .msg-regen { display: none; }
+  .msg.assistant:last-child .msg-regen { display: inline-block; }
   .msg.assistant .role {
     display: flex;
     align-items: center;
@@ -784,6 +814,38 @@
     overflow-y: auto;
     animation: rise 0.25s ease both;
   }
+  .chapter-panel .chapter-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 0 0 12px;
+    background: var(--glass-bg-strong);
+    -webkit-backdrop-filter: blur(10px) saturate(150%);
+    backdrop-filter: blur(10px) saturate(150%);
+    border: 1px solid var(--glass-border);
+    border-radius: 4px;
+    padding: 6px 8px 6px 14px;
+  }
+  .chapter-panel .chapter-head .chapter-title {
+    position: static;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+    margin: 0;
+  }
+  .ws-exact {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    margin: -6px 0 10px;
+  }
   .chapter-panel .chapter-title {
     font-size: 11px;
     font-weight: 700;
@@ -935,7 +997,8 @@
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     header, .composer-zone { background: var(--bg); }
     .passage-card { background: var(--card-bg); }
-    .chapter-panel .chapter-title { background: var(--field-bg); }
+    .chapter-panel .chapter-title,
+    .chapter-panel .chapter-head { background: var(--field-bg); }
     @media (max-width: 860px) {
       .passages { background: var(--bg-side); }
     }
@@ -1152,12 +1215,48 @@ function addMessage(role, contentHtml, refs, setIdx) {
       refsHtml = '<div class="refs">' + refs.map((r, i) =>
         `<button type="button" class="ref-chip" data-n="${i + 1}"><span class="n">${i + 1}</span>${r}</button>`).join('') + '</div>';
     }
-    wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}`;
+    const tools = `<div class="msg-tools">
+      <button type="button" class="msg-copy" title="Copy answer">Copy</button>
+      <button type="button" class="msg-regen" title="Ask this question again">Regenerate</button>
+    </div>`;
+    wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}${tools}`;
   }
   const follow = role === 'user' || nearBottom();
   messagesEl.appendChild(wrap);
   if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
   return wrap;
+}
+
+// Copy the raw answer text; regenerate re-asks the last question through
+// the normal submit path (the old exchange is removed first).
+messagesEl.addEventListener('click', (e) => {
+  const copyBtn = e.target.closest('.msg-copy');
+  if (copyBtn) {
+    const wrap = copyBtn.closest('.msg');
+    const raw = wrap._raw || wrap.querySelector('.bubble')?.innerText || '';
+    navigator.clipboard.writeText(raw).then(() => {
+      copyBtn.textContent = 'Copied';
+      setTimeout(() => { copyBtn.textContent = 'Copy'; }, 1200);
+    });
+    return;
+  }
+  if (e.target.closest('.msg-regen')) regenerateLast();
+});
+
+function regenerateLast() {
+  if (currentAbort) return; // not while a reply is streaming
+  const lastUserIdx = history.map(t => t.role).lastIndexOf('user');
+  if (lastUserIdx === -1) return;
+  const text = history[lastUserIdx].content;
+  history.length = lastUserIdx;
+  const msgs = [...messagesEl.querySelectorAll('.msg')];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const wasUser = msgs[i].classList.contains('user');
+    msgs[i].remove();
+    if (wasUser) break;
+  }
+  input.value = text;
+  composer.requestSubmit();
 }
 
 // Follow streaming output only while the reader is already at the bottom;
@@ -1290,16 +1389,64 @@ async function openChapterPanel(card, book, chapter, vStart, vEnd) {
     const res = await fetch(`/api/chapter?book=${encodeURIComponent(book)}&chapter=${encodeURIComponent(chapter)}`);
     if (!res.ok) throw new Error('Chapter not found');
     const data = await res.json();
-    const versesHtml = data.verses.map(v => {
-      const hl = vStart && v.verse >= vStart && v.verse <= (vEnd || vStart) ? ' hl' : '';
-      return `<div class="cv${hl}" data-v="${v.verse}"><span class="vn">${v.verse}</span>${escapeHtml(v.text)}</div>`;
-    }).join('');
-    panel.innerHTML = `<div class="chapter-title">${escapeHtml(data.book)} ${data.chapter}</div>${versesHtml}`;
+    panel.dataset.book = data.book;
+    panel.dataset.chapter = data.chapter;
+    panel.dataset.hlStart = vStart || '';
+    panel.dataset.hlEnd = vEnd || vStart || '';
+    const toggle = bsbUnavailable ? '' : `
+      <div class="tx-toggle" role="group" aria-label="Translation">
+        <button type="button" data-t="kjv" class="on">KJV</button>
+        <button type="button" data-t="bsb">BSB</button>
+      </div>`;
+    panel.innerHTML = `
+      <div class="chapter-head">
+        <div class="chapter-title">${escapeHtml(data.book)} ${data.chapter}</div>${toggle}
+      </div>
+      <div class="chapter-verses">${_chapterVersesHtml(data.verses, vStart, vEnd)}</div>`;
     const firstHl = panel.querySelector('.cv.hl');
     if (firstHl) firstHl.scrollIntoView({ block: 'nearest' });
   } catch (err) {
     panel.innerHTML = `<div class="chapter-error">Couldn’t load the chapter. ${escapeHtml(err.message)}</div>`;
   }
+}
+
+function _chapterVersesHtml(verses, vStart, vEnd) {
+  return verses.map(v => {
+    const hl = vStart && v.verse >= vStart && v.verse <= (vEnd || vStart) ? ' hl' : '';
+    return `<div class="cv${hl}" data-v="${v.verse}"><span class="vn">${v.verse}</span>${escapeHtml(v.text)}</div>`;
+  }).join('');
+}
+
+// KJV/BSB toggle inside an open chapter panel. Both renders are cached on
+// the panel element; word study stays KJV-gated via panel.dataset.
+async function setPanelTranslation(panel, t) {
+  const versesEl = panel.querySelector('.chapter-verses');
+  if (!versesEl) return;
+  panel._verses = panel._verses || { kjv: versesEl.innerHTML };
+  if (t === 'bsb' && panel._verses.bsb === undefined) {
+    try {
+      const params = new URLSearchParams({
+        translation: 'bsb', book: panel.dataset.book, chapter: panel.dataset.chapter,
+      });
+      const res = await fetch(`/api/passage-text?${params}`);
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => ({}))).detail || '';
+        if (detail.includes('not downloaded')) bsbUnavailable = true;
+        throw new Error(detail || 'BSB text unavailable');
+      }
+      const data = await res.json();
+      panel._verses.bsb = _chapterVersesHtml(
+        data.verses, Number(panel.dataset.hlStart) || null, Number(panel.dataset.hlEnd) || null);
+    } catch (err) {
+      versesEl.insertAdjacentHTML('beforebegin', `<div class="tx-note">${escapeHtml(err.message)}</div>`);
+      return;
+    }
+  }
+  panel.querySelector('.tx-note')?.remove();
+  versesEl.innerHTML = panel._verses[t];
+  panel.dataset.translation = t;
+  panel.querySelectorAll('.tx-toggle button').forEach(b =>
+    b.classList.toggle('on', b.dataset.t === t));
 }
 
 function toggleChapter(card) {
@@ -1345,7 +1492,7 @@ function wordAtPoint(x, y) {
 // Opens Strong's entries + concordance for a word, in the same expanding
 // panel the full chapter uses. Occurrence chips reuse .xref-chip, so the
 // existing chip handler opens any of them as a chapter view.
-async function openWordPanel(card, word) {
+async function openWordPanel(card, word, ctx = null) {
   passageList.querySelectorAll('.passage-card.expanded').forEach(c => {
     if (c !== card) collapseChapter(c);
   });
@@ -1357,7 +1504,13 @@ async function openWordPanel(card, word) {
   card.classList.add('expanded');
 
   try {
-    const res = await fetch(`/api/word-study?word=${encodeURIComponent(word)}`);
+    const params = new URLSearchParams({ word });
+    if (ctx) {
+      params.set('book', ctx.book);
+      params.set('chapter', ctx.chapter);
+      if (ctx.start) { params.set('start', ctx.start); params.set('end', ctx.end || ctx.start); }
+    }
+    const res = await fetch(`/api/word-study?${params}`);
     if (!res.ok) throw new Error('Lookup failed');
     const d = await res.json();
     const entries = d.strongs.map(s => `
@@ -1368,8 +1521,12 @@ async function openWordPanel(card, word) {
       </div>`).join('');
     const chips = d.occurrences.map(o =>
       `<button type="button" class="xref-chip" data-ref="${escapeAttr(o.reference)}" title="${escapeAttr(o.text)}">${escapeHtml(o.reference)}</button>`).join('');
+    const exactNote = d.exact
+      ? '<div class="ws-exact">Exact match — tagged on this word in this passage</div>'
+      : '';
     panel.innerHTML = `
       <div class="chapter-title">Word study — “${escapeHtml(d.word)}”</div>
+      ${exactNote}
       ${entries || '<div class="chapter-loading">No Strong&#39;s entry matches this word. Run scripts/fetch_strongs.py to enable original-language data.</div>'}
       <div class="ws-count">Appears in ${d.count} verse${d.count === 1 ? '' : 's'}</div>
       <div class="xrefs">${chips}</div>`;
@@ -1381,7 +1538,9 @@ async function openWordPanel(card, word) {
 passageList.addEventListener('click', (e) => {
   const txBtn = e.target.closest('.tx-toggle button');
   if (txBtn) {
-    setCardTranslation(txBtn.closest('.passage-card'), txBtn.dataset.t);
+    const panel = txBtn.closest('.chapter-panel');
+    if (panel) setPanelTranslation(panel, txBtn.dataset.t);
+    else setCardTranslation(txBtn.closest('.passage-card'), txBtn.dataset.t);
     return;
   }
   const xref = e.target.closest('.xref-chip');
@@ -1402,11 +1561,27 @@ passageList.addEventListener('click', (e) => {
   if (e.target.closest('button')) return;
   const textEl = e.target.closest('.verse-text, .chapter-panel .cv');
   if (!textEl) return;
+  const card = e.target.closest('.passage-card');
   // Strong's data is keyed to KJV words; no word study on BSB text.
-  if (textEl.classList.contains('verse-text') &&
-      e.target.closest('.passage-card')?.dataset.translation === 'bsb') return;
+  // The verse context (book/chapter/verse) lets the backend resolve the
+  // exact tagged Strong's number instead of listing candidates.
+  let ctx = null;
+  if (textEl.classList.contains('verse-text')) {
+    if (card?.dataset.translation === 'bsb') return;
+    if (card?.dataset.vstart) {
+      ctx = { book: card.dataset.book, chapter: card.dataset.chapter,
+              start: card.dataset.vstart, end: card.dataset.vend || card.dataset.vstart };
+    }
+  } else {
+    const panel = textEl.closest('.chapter-panel');
+    if (panel?.dataset.translation === 'bsb') return;
+    if (panel?.dataset.book) {
+      ctx = { book: panel.dataset.book, chapter: panel.dataset.chapter,
+              start: textEl.dataset.v, end: textEl.dataset.v };
+    }
+  }
   const word = wordAtPoint(e.clientX, e.clientY);
-  if (word) openWordPanel(e.target.closest('.passage-card'), word);
+  if (word) openWordPanel(card, word, ctx);
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -1710,6 +1885,7 @@ composer.addEventListener('submit', async (e) => {
     });
 
     ensureAnswerMsg();
+    if (bubble) bubble.closest('.msg')._raw = answerRaw;
     if (quoteChecks && bubble) annotateQuotes(bubble, quoteChecks);
     if (answerRaw) {
       history.push({ role: 'assistant', content: answerRaw, setIdx,
@@ -1801,6 +1977,7 @@ function restoreConversation(id) {
       const set = turn.setIdx >= 0 ? passageSets[turn.setIdx] : null;
       const refs = set ? set.map(p => p.reference) : [];
       const wrap = addMessage('assistant', formatAnswer(turn.content), refs, set ? turn.setIdx : undefined);
+      wrap._raw = turn.content;
       if (turn.quotes) annotateQuotes(wrap.querySelector('.bubble'), turn.quotes);
     }
   }
@@ -1881,8 +2058,18 @@ function renderConvMenu() {
       <button type="button" class="conv-act conv-delete" title="Delete" aria-label="Delete conversation">&#10005;</button>
     </div>`;
   }).join('');
-  convMenu.innerHTML = (rows || '<div class="conv-empty">No saved conversations yet.</div>')
+  const filter = convIndex.order.length > 5
+    ? '<input type="text" class="conv-filter" placeholder="Search conversations…" aria-label="Search conversations">'
+    : '';
+  convMenu.innerHTML = filter
+    + (rows || '<div class="conv-empty">No saved conversations yet.</div>')
     + `<button type="button" class="conv-title conv-export"${history.length ? '' : ' disabled'}>Export as Markdown</button>`;
+  convMenu.querySelector('.conv-filter')?.addEventListener('input', (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    convMenu.querySelectorAll('.conv-row').forEach(row => {
+      row.hidden = !!q && !row.querySelector('.conv-title').textContent.toLowerCase().includes(q);
+    });
+  });
 }
 
 function openConvMenu() {
