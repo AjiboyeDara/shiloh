@@ -535,7 +535,7 @@
     margin-bottom: 16px;
     box-shadow: inset 0 1px 0 var(--glass-highlight), var(--glass-shadow);
     transition: border-color 0.2s, box-shadow 0.2s;
-    animation: rise 0.35s ease both;
+    animation: rise 0.45s ease both;
   }
   .passage-card.lit {
     border-color: var(--accent);
@@ -1034,7 +1034,7 @@ function addMessage(role, contentHtml, refs, setIdx) {
 const passageSets = [];
 let shownSet = -1;
 
-function renderPassages(setIdx) {
+function renderPassages(setIdx, stagger = false) {
   const passages = passageSets[setIdx];
   if (!passages || !passages.length) return;
   shownSet = setIdx;
@@ -1049,7 +1049,7 @@ function renderPassages(setIdx) {
     <div class="passage-card" data-n="${i + 1}"
          data-book="${escapeHtml(p.book)}" data-chapter="${p.chapter}"
          data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
-         style="animation-delay: ${i * 60}ms">
+         style="animation-delay: ${stagger ? i * 140 : 0}ms">
       <div class="card-head">
         <div class="ref">${escapeHtml(p.reference)}</div>
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
@@ -1481,7 +1481,7 @@ composer.addEventListener('submit', async (e) => {
     await readSSE(res, (type, payload) => {
       if (type === 'passages') {
         setIdx = passageSets.push(payload.passages || []) - 1;
-        renderPassages(setIdx);
+        renderPassages(setIdx, true);
       } else if (type === 'quotes') {
         quoteChecks = payload.quotes;
       } else if (type === 'error') {
@@ -1548,7 +1548,7 @@ function restoreConversation() {
     }
   }
   const last = [...history].reverse().find(t => t.setIdx >= 0 && passageSets[t.setIdx]);
-  if (last) renderPassages(last.setIdx);
+  if (last) renderPassages(last.setIdx, true);
 }
 
 function newConversation() {
