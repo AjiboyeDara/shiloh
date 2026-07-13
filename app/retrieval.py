@@ -41,6 +41,8 @@ def get_embedder():
 # query and passage together. Off by default: on the golden set, every
 # candidate tried (ms-marco-MiniLM-L-6-v2, bge-reranker-base) scored at or
 # below the plain RRF fusion — modern-English rerankers misjudge KJV text.
+# Scoring the BSB (modern) rendering of each chunk instead (2026-07, see
+# _modern_chunk_text) also lost clearly: recall@6 0.557 vs 0.677 without.
 # Set RERANK_MODEL to experiment.
 RERANK_MODEL = os.environ.get("RERANK_MODEL", "")
 
@@ -109,9 +111,9 @@ _KJV_SYNONYMS = {
     "tithing": "tithes storehouse cheerful giver",
     # Broader modern terms the KJV renders differently.
     "fear": "fear not dismayed",
-    "poor": "poor needy giveth lendeth",
+    "poor": "hath pity upon the poor lendeth unto the lord",
     "tongue": "death and life are in the power of the tongue",
-    "wisdom": "lack wisdom ask of god",
+    "wisdom": "if any lack wisdom ask fear of the lord beginning",
     "saved": "believe confess with thy mouth",
     "flood": "waters prevailed ark",
     "sabbath": "remember the sabbath day rested",
@@ -269,13 +271,27 @@ def _apply_floor(ranked):
     return kept if len(kept) >= MIN_KEEP else ranked[:MIN_KEEP]
 
 
+def _modern_chunk_text(meta):
+    """BSB wording for a chunk's verse range. Rerankers are trained on
+    modern English and misjudge KJV text, so when a reranker is enabled it
+    scores the modern rendering instead. None when BSB isn't on disk."""
+    vs, ve = meta.get("verse_start"), meta.get("verse_end")
+    if vs is None:
+        return None
+    verses = _load_bsb_verses().get((meta["book"], meta["chapter"]), [])
+    window = [v["text"] for v in verses if vs <= v["verse"] <= ve]
+    return " ".join(window) or None
+
+
 def _rerank(query, candidates):
     """Re-order the fused pool by cross-encoder relevance; RRF picks the
     pool, the reranker orders it. No-op when reranking is disabled."""
     reranker = get_reranker()
     if reranker is None or not candidates:
         return candidates
-    scores = reranker.predict([(query, doc) for _, doc, _ in candidates])
+    pairs = [(query, _modern_chunk_text(meta) or doc)
+             for _, doc, meta in candidates]
+    scores = reranker.predict(pairs)
     order = sorted(range(len(candidates)), key=lambda i: -scores[i])
     return [candidates[i] for i in order]
 
@@ -303,7 +319,11 @@ VERSES_PATH = os.path.join(DATA_DIR, "kjv_verses.json")
 
 @lru_cache(maxsize=1)
 def _load_all_verses():
-    """Load the full KJV verse list once and index it by (book, chapter)."""
+    """Load the full KJV verse list once and index it by (book, chapter).
+    Empty on a fresh clone (before scripts/download_bible.py), so callers
+    get clean empty results instead of a crash."""
+    if not os.path.exists(VERSES_PATH):
+        return {}
     with open(VERSES_PATH, encoding="utf-8") as f:
         verses = json.load(f)
     by_chapter = {}
@@ -409,6 +429,8 @@ def _reference_pattern():
     """Regex matching 'Book Chapter', 'Book Chapter:Verse', and
     'Book Chapter:Start-End', built from the book names in the data."""
     canonical = {b.lower(): b for b, _ in _load_all_verses().keys()}
+    if not canonical:  # no Bible data yet — a pattern that never matches
+        return re.compile(r"(?!x)x"), {}
     canonical["psalm"] = "Psalms"  # people usually write "Psalm 23"
     # Longest first so "1 John" wins over "John", "Psalms" over "Psalm".
     alts = "|".join(re.escape(n) for n in sorted(canonical, key=len, reverse=True))
