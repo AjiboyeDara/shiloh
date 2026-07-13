@@ -77,3 +77,38 @@ def test_chapter_endpoint():
 def test_chapter_endpoint_404():
     res = client.get("/api/chapter", params={"book": "Nonexistent", "chapter": 1})
     assert res.status_code == 404
+
+
+def test_parse_origins():
+    assert app_main._parse_origins("*") == ["*"]
+    assert app_main._parse_origins("https://a.com, https://b.com,") == [
+        "https://a.com", "https://b.com",
+    ]
+
+
+def _mock_answer(monkeypatch):
+    monkeypatch.setattr(
+        app_main, "answer_question",
+        lambda message, **kw: ("An answer.", FAKE_PASSAGES),
+    )
+
+
+def test_rate_limit_disabled_by_default(monkeypatch):
+    _mock_answer(monkeypatch)
+    app_main._rate_buckets.clear()
+    for _ in range(5):
+        assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
+
+
+def test_rate_limit_enforced(monkeypatch):
+    _mock_answer(monkeypatch)
+    monkeypatch.setattr(app_main, "RATE_LIMIT_PER_MINUTE", 2)
+    app_main._rate_buckets.clear()
+    assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
+    assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
+    res = client.post("/api/chat", json={"message": "hi"})
+    assert res.status_code == 429
+    assert "Rate limit" in res.json()["detail"]
+    # Non-chat endpoints are not limited.
+    assert client.get("/health").status_code == 200
+    app_main._rate_buckets.clear()

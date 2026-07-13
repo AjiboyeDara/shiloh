@@ -1,12 +1,14 @@
 import json
 import os
 import re
+import time
+from collections import defaultdict, deque
 
 from dotenv import load_dotenv
 
 load_dotenv()  # must run before app.rag reads provider/model settings at import
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,11 +61,50 @@ def _check_provider_key(provider: str):
             detail=f"{required_key} is not set. Add it to your .env file.",
         )
 
+def _parse_origins(raw: str):
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
+# Per-IP rate limit on the chat endpoints (they're the ones that spend LLM
+# calls). Disabled by default so localhost dev is unaffected; set
+# CHAT_RATE_LIMIT to a requests-per-minute cap when hosting publicly.
+RATE_LIMIT_PER_MINUTE = int(os.environ.get("CHAT_RATE_LIMIT", 0))
+TRUST_PROXY = os.environ.get("TRUST_PROXY") == "1"
+_rate_buckets: dict = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    if TRUST_PROXY:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit(request: Request):
+    if RATE_LIMIT_PER_MINUTE <= 0:
+        return
+    now = time.monotonic()
+    ip = _client_ip(request)
+    bucket = _rate_buckets[ip]
+    while bucket and now - bucket[0] > 60:
+        bucket.popleft()
+    if len(bucket) >= RATE_LIMIT_PER_MINUTE:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded; please wait a moment and try again.",
+        )
+    bucket.append(now)
+    # Drop other IPs' stale buckets so the dict can't grow unboundedly.
+    for other in [k for k, v in _rate_buckets.items() if v and now - v[-1] > 60]:
+        del _rate_buckets[other]
+
+
 app = FastAPI(title="Open Bible Study AI")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_origins(os.environ.get("CORS_ORIGINS", "*")),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -164,7 +205,8 @@ def word_study_endpoint(word: str):
     return word_study(word)
 
 
-@app.post("/api/chat", response_model=ChatResponse)
+@app.post("/api/chat", response_model=ChatResponse,
+          dependencies=[Depends(rate_limit)])
 def chat(req: ChatRequest):
     provider = (req.provider or PROVIDER).lower()
     _check_provider_key(provider)
@@ -185,7 +227,7 @@ def chat(req: ChatRequest):
     )
 
 
-@app.post("/api/chat/stream")
+@app.post("/api/chat/stream", dependencies=[Depends(rate_limit)])
 def chat_stream(req: ChatRequest):
     """Server-sent events: one `passages` event, then `data` deltas of the
     answer text, then a `done` event. Errors mid-stream arrive as an

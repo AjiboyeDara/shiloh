@@ -161,6 +161,20 @@ translation and adjust `normalize()` if the shape differs. Do **not** use a
 copyrighted modern translation (NIV, ESV, NLT, etc.) without a license from
 its publisher.
 
+## Self-hosting
+
+Two env vars harden a publicly exposed instance (both optional; defaults
+keep localhost development frictionless):
+
+- `CORS_ORIGINS` — comma-separated list of allowed browser origins
+  (default `*`). Set it to your site, e.g.
+  `CORS_ORIGINS=https://bible.example.com`.
+- `CHAT_RATE_LIMIT` — per-IP requests per minute on the two chat endpoints
+  (default `0` = disabled). `CHAT_RATE_LIMIT=10` is a sane public setting;
+  over the limit returns HTTP 429. If the app sits behind a reverse proxy,
+  also set `TRUST_PROXY=1` so the limit keys on `X-Forwarded-For` instead
+  of the proxy's own address.
+
 ## Roadmap ideas
 
 - Multi-translation comparison view
