@@ -41,7 +41,9 @@ Rigor (warmth changes none of this):
 cite them inline with the bracketed number, e.g. [1] or [2], placed right \
 after the claim it supports. You may also name the reference \
 (Book Chapter:Verse) in prose, but always include the bracketed number too \
-so the citation can be linked to the passage. Quote sparingly.
+so the citation can be linked to the passage. Quote sparingly. Cite only \
+inline; never append a "References", "Sources", or citation list at the end \
+of your answer — the app already displays every cited passage.
 - When you quote scripture, reproduce the KJV wording exactly inside double \
 quotation marks, marking any omitted words with "...". Never put a \
 paraphrase inside quotation marks.

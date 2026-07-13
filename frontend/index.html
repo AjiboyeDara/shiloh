@@ -1049,7 +1049,7 @@ function renderPassages(setIdx, stagger = false) {
     <div class="passage-card" data-n="${i + 1}"
          data-book="${escapeHtml(p.book)}" data-chapter="${p.chapter}"
          data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
-         style="animation-delay: ${stagger ? i * 140 : 0}ms">
+         style="${stagger ? `animation-delay: ${i * 140}ms` : 'animation: none'}">
       <div class="card-head">
         <div class="ref">${escapeHtml(p.reference)}</div>
         <span class="cited-pill">Cited &middot; ${i + 1}</span>
@@ -1065,6 +1065,13 @@ function renderPassages(setIdx, stagger = false) {
   sheetFab.hidden = false;
   sheetFab.textContent = `Passages · ${passages.length}`;
 }
+
+// The entrance fade is one-shot: once a card has risen, drop its animation
+// entirely so nothing re-fades or shimmers while scrolling the pane.
+passageList.addEventListener('animationend', (e) => {
+  const card = e.target.closest('.passage-card');
+  if (card && e.animationName === 'rise') card.style.animation = 'none';
+});
 
 // Chapter panels expand within a passage card: the card's own chapter via
 // the toggle button, or any chapter via a cross-reference chip. Only one
@@ -1311,6 +1318,9 @@ function annotateQuotes(bubble, checks) {
 // Render the answer: escape first, then a small markdown pass (bold,
 // italics, headings, lists) plus [1]-style citations as clickable sups.
 function formatAnswer(str) {
+  // Models sometimes append their own "References:" footer even though the
+  // ref-chips under the answer already list every citation; drop it.
+  str = str.replace(/(^|\n)\s*(References|Sources|Citations)\s*:?\s*\n?[\s\S]*$/i, '');
   const inline = s => s
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
