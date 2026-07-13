@@ -1024,9 +1024,16 @@ function addMessage(role, contentHtml, refs, setIdx) {
     }
     wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}`;
   }
+  const follow = role === 'user' || nearBottom();
   messagesEl.appendChild(wrap);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
+  if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
   return wrap;
+}
+
+// Follow streaming output only while the reader is already at the bottom;
+// someone who scrolled up to read stays put until they scroll back down.
+function nearBottom() {
+  return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
 }
 
 // Each assistant reply's passages are kept here; message elements carry the
@@ -1498,16 +1505,18 @@ composer.addEventListener('submit', async (e) => {
         // The server re-checked the quoted scripture and sent a corrected
         // answer; it replaces the streamed text.
         ensureAnswerMsg();
+        const follow = nearBottom();
         answerRaw = payload.answer;
         bubble.innerHTML = formatAnswer(answerRaw);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
       } else if (type === 'error') {
         throw new Error(payload.message || 'Generation failed');
       } else if (payload.delta) {
         ensureAnswerMsg();
+        const follow = nearBottom();
         answerRaw += payload.delta;
         bubble.innerHTML = formatAnswer(answerRaw);
-        messagesEl.scrollTop = messagesEl.scrollHeight;
+        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
       }
     });
 
