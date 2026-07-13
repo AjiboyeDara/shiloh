@@ -1484,6 +1484,13 @@ composer.addEventListener('submit', async (e) => {
         renderPassages(setIdx, true);
       } else if (type === 'quotes') {
         quoteChecks = payload.quotes;
+      } else if (type === 'revision') {
+        // The server re-checked the quoted scripture and sent a corrected
+        // answer; it replaces the streamed text.
+        ensureAnswerMsg();
+        answerRaw = payload.answer;
+        bubble.innerHTML = formatAnswer(answerRaw);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
       } else if (type === 'error') {
         throw new Error(payload.message || 'Generation failed');
       } else if (payload.delta) {

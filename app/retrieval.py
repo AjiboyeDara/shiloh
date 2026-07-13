@@ -14,13 +14,43 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 INDEX_DIR = os.path.join(DATA_DIR, "chroma_index")
 RESOURCES_DIR = os.path.join(os.path.dirname(__file__), "..", "resources")
 
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = os.environ.get("EMBED_MODEL", "all-MiniLM-L6-v2")
+
+# Some embedding models score short queries better with an instruction
+# prefix on the query side only (documents are embedded bare). Matched by
+# substring against EMBED_MODEL.
+_QUERY_PREFIXES = {
+    "bge-": "Represent this sentence for searching relevant passages: ",
+}
+
+
+def _query_prefix():
+    override = os.environ.get("EMBED_QUERY_PREFIX")
+    if override is not None:
+        return override
+    return next((p for name, p in _QUERY_PREFIXES.items() if name in EMBED_MODEL), "")
 
 
 @lru_cache(maxsize=1)
 def get_embedder():
     from sentence_transformers import SentenceTransformer
     return SentenceTransformer(EMBED_MODEL)
+
+
+# Optional cross-encoder that re-scores the fused candidate pool by reading
+# query and passage together. Off by default: on the golden set, every
+# candidate tried (ms-marco-MiniLM-L-6-v2, bge-reranker-base) scored at or
+# below the plain RRF fusion — modern-English rerankers misjudge KJV text.
+# Set RERANK_MODEL to experiment.
+RERANK_MODEL = os.environ.get("RERANK_MODEL", "")
+
+
+@lru_cache(maxsize=1)
+def get_reranker():
+    if not RERANK_MODEL:
+        return None
+    from sentence_transformers import CrossEncoder
+    return CrossEncoder(RERANK_MODEL)
 
 
 @lru_cache(maxsize=1)
@@ -65,6 +95,13 @@ _CANDIDATES = 50     # candidates pulled from each retriever before fusing
 # thematic question spans the canon instead of one strong chapter filling
 # every slot. Env-overridable for eval experiments.
 MAX_PER_CHAPTER = int(os.environ.get("MAX_PER_CHAPTER", 2))
+
+# Relevance floor: drop fused results scoring below this fraction of the
+# leader. Steep score curves (precise questions) lose their noise tail —
+# junk passages mislead small models more than they help. Flat curves
+# (vague queries) drop nothing. At least MIN_KEEP always survive.
+MIN_SCORE_RATIO = float(os.environ.get("MIN_SCORE_RATIO", 0.45))
+MIN_KEEP = 3
 
 
 def _expand_query(query: str):
@@ -128,11 +165,14 @@ def _as_passage(doc, meta):
 def search_passages(query: str, top_k: int = 6):
     """Hybrid semantic + lexical search. Returns a list of dicts:
     reference, text, book, chapter, verse_start, verse_end."""
+    raw_query = query  # the reranker reads the query without synonym padding
     query = _expand_query(query)
     model = get_embedder()
     collection = get_collection()
 
-    query_embedding = model.encode([query], normalize_embeddings=True)[0].tolist()
+    query_embedding = model.encode(
+        [_query_prefix() + query], normalize_embeddings=True
+    )[0].tolist()
 
     # id -> [rrf_score, doc, meta]; the same chunk found by several
     # retrievers accumulates contributions.
@@ -174,7 +214,29 @@ def search_passages(query: str, top_k: int = 6):
                 fused[id_] = [contribution, data["documents"][i], data["metadatas"][i]]
 
     ranked = sorted(fused.values(), key=lambda x: -x[0])
+    ranked = _rerank(raw_query, _apply_floor(ranked)[:_CANDIDATES])
     return [_as_passage(doc, meta) for _, doc, meta in _diversify(ranked, top_k)]
+
+
+def _apply_floor(ranked):
+    """Drop results scoring below MIN_SCORE_RATIO of the leader, keeping at
+    least MIN_KEEP. Eval-verified recall-neutral: it only sheds the tail."""
+    if not ranked:
+        return ranked
+    floor = ranked[0][0] * MIN_SCORE_RATIO
+    kept = [r for r in ranked if r[0] >= floor]
+    return kept if len(kept) >= MIN_KEEP else ranked[:MIN_KEEP]
+
+
+def _rerank(query, candidates):
+    """Re-order the fused pool by cross-encoder relevance; RRF picks the
+    pool, the reranker orders it. No-op when reranking is disabled."""
+    reranker = get_reranker()
+    if reranker is None or not candidates:
+        return candidates
+    scores = reranker.predict([(query, doc) for _, doc, _ in candidates])
+    order = sorted(range(len(candidates)), key=lambda i: -scores[i])
+    return [candidates[i] for i in order]
 
 
 def _diversify(ranked, top_k):
@@ -215,6 +277,38 @@ def canonical_book(book: str) -> str:
     """'psalms', 'PSALMS', or 'psalm' -> 'Psalms'; unknown names pass through."""
     _, names = _reference_pattern()
     return names.get(book.strip().lower(), book)
+
+
+# A 5-verse chunk can cut a narrative off mid-story (1 Kings 3:16-20 ends
+# before Solomon's ruling), leaving the LLM to invent the ending. Top hits
+# are widened to their surrounding chapter before they reach the prompt.
+EXPAND_MAX_VERSES = int(os.environ.get("EXPAND_MAX_VERSES", 40))
+
+
+def expanded_text(passage: dict, max_verses: int = None):
+    """(text, reference, verse_count) for the passage widened to its
+    surrounding chapter, capped at max_verses centered on the hit. Falls
+    back to the passage's own text when it can't be located."""
+    if max_verses is None:
+        max_verses = EXPAND_MAX_VERSES
+    verses = _load_all_verses().get((passage["book"], passage["chapter"]), [])
+    vs, ve = passage.get("verse_start"), passage.get("verse_end")
+    if not verses or vs is None:
+        return passage["text"], passage["reference"], 0
+    if len(verses) <= max_verses:
+        window = verses
+    else:
+        span = ve - vs + 1
+        pad = max(0, (max_verses - span) // 2)
+        start = next((i for i, v in enumerate(verses) if v["verse"] >= vs), 0)
+        start = min(max(0, start - pad), len(verses) - max_verses)
+        window = verses[start:start + max_verses]
+    text = " ".join(f"{v['verse']}. {v['text']}" for v in window)
+    if len(window) == len(verses):
+        ref = f"{passage['book']} {passage['chapter']}"
+    else:
+        ref = f"{passage['book']} {passage['chapter']}:{window[0]['verse']}-{window[-1]['verse']}"
+    return text, ref, len(window)
 
 
 def get_chapter(book: str, chapter: int):

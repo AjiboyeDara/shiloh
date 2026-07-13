@@ -168,8 +168,14 @@ its publisher.
 - A Strong's-tagged KJV so word study resolves the exact original word per
   verse (today it lists candidates via the dictionaries' KJV renderings)
 - Commentary fetch script (Matthew Henry) for the existing commentary hook
-- A stronger embedding model, measured with `scripts/eval_retrieval.py`
-  (`all-MiniLM-L6-v2` is the current retrieval bottleneck)
+- A stronger embedding model, measured with `scripts/eval_retrieval.py`.
+  `EMBED_MODEL` and an optional cross-encoder rerank stage (`RERANK_MODEL`)
+  are env-configurable to make experiments cheap. Tried so far (2026-07),
+  all at or below the `all-MiniLM-L6-v2` + RRF baseline on the golden set:
+  `bge-small-en-v1.5` (with and without query prefix), reranking with
+  `ms-marco-MiniLM-L-6-v2` and `bge-reranker-base` — modern-English models
+  seem to misjudge KJV text, so a candidate should likely be fine-tuned or
+  chosen for archaic English
 
 ## License
 
