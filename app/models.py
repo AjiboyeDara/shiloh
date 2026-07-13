@@ -78,6 +78,7 @@ class WordStudyResponse(BaseModel):
     strongs: List[StrongsEntry] = []
     count: int
     occurrences: List[WordOccurrence] = []
+    exact: bool = False  # entries resolved from the tagged KJV at this verse
 
 
 class SearchRequest(BaseModel):

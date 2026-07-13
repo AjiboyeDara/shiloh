@@ -140,6 +140,32 @@ def test_rate_limit_disabled_by_default(monkeypatch):
         assert client.post("/api/chat", json={"message": "hi"}).status_code == 200
 
 
+needs_tagged = pytest.mark.skipif(
+    not os.path.exists(os.path.join(os.path.dirname(VERSES_PATH), "..",
+                                    "resources", "strongs", "kjv_tagged.json")),
+    reason="tagged KJV missing; run scripts/fetch_strongs_kjv.py",
+)
+
+
+@needs_tagged
+def test_word_study_exact_with_verse_context():
+    res = client.get("/api/word-study", params={
+        "word": "loved", "book": "John", "chapter": 3, "start": 16, "end": 16,
+    })
+    assert res.status_code == 200
+    body = res.json()
+    assert body["exact"] is True
+    # John 3:16 "loved" is agapaō (G25), and it should be the top entry.
+    assert body["strongs"][0]["number"] == "G25"
+
+
+@needs_data
+def test_word_study_without_context_not_exact():
+    res = client.get("/api/word-study", params={"word": "loved"})
+    assert res.status_code == 200
+    assert res.json()["exact"] is False
+
+
 def test_rate_limit_enforced(monkeypatch):
     _mock_answer(monkeypatch)
     monkeypatch.setattr(app_main, "RATE_LIMIT_PER_MINUTE", 2)

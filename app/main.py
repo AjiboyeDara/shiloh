@@ -228,15 +228,20 @@ def passage_text(book: str, chapter: int, translation: str = "kjv",
 
 
 @app.get("/api/word-study", response_model=WordStudyResponse)
-def word_study_endpoint(word: str):
-    """Strong's entries + KJV concordance for one English word."""
+def word_study_endpoint(word: str, book: str | None = None,
+                        chapter: int | None = None,
+                        start: int | None = None, end: int | None = None):
+    """Strong's entries + KJV concordance for one English word. With a
+    verse context (book/chapter/start/end) and the tagged KJV downloaded,
+    the entries are the exact numbers tagged on the word there."""
     word = word.strip()
     if not re.fullmatch(r"[A-Za-z][A-Za-z'-]{0,23}", word):
         raise HTTPException(
             status_code=422,
             detail="Provide a single English word (letters only).",
         )
-    return word_study(word)
+    return word_study(word, book=book, chapter=chapter,
+                      verse_start=start, verse_end=end)
 
 
 @app.post("/api/chat", response_model=ChatResponse,

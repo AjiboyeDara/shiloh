@@ -10,10 +10,9 @@ Steps:
   2. BSB text               (modern-English retrieval mirror; public domain)
   3. Cross-references       (openbible.info, CC-BY)
   4. Strong's dictionaries  (OpenScriptures, CC-BY-SA)
-  5. Vector indexes         (KJV + BSB; a few minutes of local embedding)
-
-Chapter commentary (resources/commentary/) has no bundled fetcher yet; see
-the README's "Adding commentary" section for the drop-in format.
+  5. Strong's-tagged KJV    (exact word study; public-domain data)
+  6. Commentary             (Matthew Henry, public domain)
+  7. Vector indexes         (KJV + BSB; a few minutes of local embedding)
 """
 import os
 import sys
@@ -22,8 +21,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import build_index
 import download_bible
+import fetch_commentary
 import fetch_cross_references
 import fetch_strongs
+import fetch_strongs_kjv
 
 
 def _optional(label, fn, done_path):
@@ -60,6 +61,9 @@ def main():
     _optional("cross-references", fetch_cross_references.main,
               fetch_cross_references.OUT_PATH)
     _optional("Strong's", fetch_strongs.main, fetch_strongs.OUT_PATH)
+    _optional("tagged KJV", fetch_strongs_kjv.main, fetch_strongs_kjv.OUT_PATH)
+    _optional("commentary", lambda: fetch_commentary.main(),
+              os.path.join(fetch_commentary.OUT_DIR, "Revelation.json"))
 
     if _index_ready() and "--rebuild" not in sys.argv:
         print("[index] already built, skipping (pass --rebuild to force).")
