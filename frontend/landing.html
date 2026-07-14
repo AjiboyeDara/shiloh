@@ -22,10 +22,6 @@
     75%  { border-radius: 48% 52% 46% 54% / 54% 48% 52% 46%; }
     100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
   }
-  @keyframes shShineSweep {
-    0%   { transform: translate(-20%, -20%) rotate(0deg); }
-    100% { transform: translate(-20%, -20%) rotate(360deg); }
-  }
 
   .stage {
     position: relative;
@@ -54,12 +50,13 @@
     width: 220px;
     height: 220px;
     border-radius: 50%;
-    background: linear-gradient(155deg, #7fc4ff 0%, #8f9bf0 45%, #c98ce8 100%);
+    background: linear-gradient(155deg, rgba(96,150,224,.52) 0%, rgba(118,124,214,.55) 45%, rgba(168,116,206,.52) 100%);
     background-size: 220% 220%;
     animation: shGradientShift 8s ease-in-out infinite, shLiquidWobble 7s ease-in-out infinite;
-    box-shadow: 0 20px 60px rgba(60,60,140,.35), inset 0 1px 1px rgba(255,255,255,.6), inset 0 -18px 30px rgba(60,60,140,.2);
-    -webkit-backdrop-filter: blur(2px) saturate(160%);
-    backdrop-filter: blur(2px) saturate(160%);
+    border: 1px solid rgba(255,255,255,.45);
+    box-shadow: 0 20px 60px rgba(60,60,140,.25), inset 0 1px 1px rgba(255,255,255,.6), inset 0 -18px 30px rgba(60,60,140,.15);
+    -webkit-backdrop-filter: blur(22px) saturate(170%);
+    backdrop-filter: blur(22px) saturate(170%);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -75,17 +72,6 @@
     animation: shGradientShift 8s ease-in-out infinite;
   }
 
-  .shine {
-    position: absolute;
-    top: -30%;
-    left: -30%;
-    width: 160%;
-    height: 160%;
-    background: conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,.35) 40deg, transparent 90deg, transparent 250deg, rgba(255,255,255,.2) 300deg, transparent 340deg);
-    animation: shShineSweep 10s linear infinite;
-    mix-blend-mode: screen;
-    pointer-events: none;
-  }
 
   .collapsed {
     position: absolute;
@@ -105,6 +91,8 @@
     letter-spacing: -.01em;
     color: #fff;
   }
+  .collapsed, .expanded { text-shadow: 0 1px 14px rgba(50,60,120,.35); }
+  .collapsed svg, .expanded svg { filter: drop-shadow(0 1px 6px rgba(50,60,120,.35)); }
 
   .expanded {
     position: absolute;
@@ -158,7 +146,6 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .blob, .blob:hover, .blob.open { animation: none; }
-    .shine { animation: none; }
   }
 </style>
 </head>
@@ -168,8 +155,6 @@
 
   <div class="center">
     <div class="blob" id="blob">
-      <div class="shine"></div>
-
       <div class="collapsed">
         <svg width="42" height="53" viewBox="0 0 22 28" fill="none" aria-hidden="true">
           <line x1="11" y1="2" x2="11" y2="26" stroke="#fff" stroke-width="2.6"/>
