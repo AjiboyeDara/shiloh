@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shiloh — Scripture-grounded study</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=Spectral:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+
+  @keyframes shGradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes shLiquidWobble {
+    0%   { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+    25%  { border-radius: 46% 54% 58% 42% / 58% 44% 56% 42%; }
+    50%  { border-radius: 54% 46% 44% 56% / 46% 58% 42% 54%; }
+    75%  { border-radius: 48% 52% 46% 54% / 54% 48% 52% 46%; }
+    100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+  }
+  @keyframes shShineSweep {
+    0%   { transform: translate(-20%, -20%) rotate(0deg); }
+    100% { transform: translate(-20%, -20%) rotate(360deg); }
+  }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    background: #7fb8e6;
+  }
+  .stage video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .blob {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: linear-gradient(155deg, #7fc4ff 0%, #8f9bf0 45%, #c98ce8 100%);
+    background-size: 220% 220%;
+    animation: shGradientShift 8s ease-in-out infinite, shLiquidWobble 7s ease-in-out infinite;
+    box-shadow: 0 20px 60px rgba(60,60,140,.35), inset 0 1px 1px rgba(255,255,255,.6), inset 0 -18px 30px rgba(60,60,140,.2);
+    -webkit-backdrop-filter: blur(2px) saturate(160%);
+    backdrop-filter: blur(2px) saturate(160%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: width .45s cubic-bezier(.22,1,.36,1), height .45s cubic-bezier(.22,1,.36,1), border-radius .5s ease;
+    position: relative;
+    overflow: hidden;
+  }
+  .blob:hover, .blob.open {
+    width: 420px;
+    height: 340px;
+    border-radius: 28px;
+    animation: shGradientShift 8s ease-in-out infinite;
+  }
+
+  .shine {
+    position: absolute;
+    top: -30%;
+    left: -30%;
+    width: 160%;
+    height: 160%;
+    background: conic-gradient(from 0deg, transparent 0deg, rgba(255,255,255,.35) 40deg, transparent 90deg, transparent 250deg, rgba(255,255,255,.2) 300deg, transparent 340deg);
+    animation: shShineSweep 10s linear infinite;
+    mix-blend-mode: screen;
+    pointer-events: none;
+  }
+
+  .collapsed {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    opacity: 1;
+    transition: opacity .25s ease;
+    pointer-events: none;
+  }
+  .blob:hover .collapsed, .blob.open .collapsed { opacity: 0; }
+  .collapsed .mark {
+    font: 700 40px 'Hanken Grotesk', system-ui, sans-serif;
+    letter-spacing: -.01em;
+    color: #fff;
+  }
+
+  .expanded {
+    position: absolute;
+    inset: 0;
+    padding: 32px 30px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 16px;
+    opacity: 0;
+    transition: opacity .3s ease 0s;
+    pointer-events: none;
+  }
+  .blob:hover .expanded, .blob.open .expanded {
+    opacity: 1;
+    transition: opacity .3s ease .15s;
+    pointer-events: auto;
+  }
+  .expanded .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .expanded .logo-row .mark {
+    font: 700 24px 'Hanken Grotesk', system-ui, sans-serif;
+    letter-spacing: -.01em;
+    color: #fff;
+  }
+  .expanded p {
+    margin: 0;
+    font: 400 15px/1.65 'Spectral', serif;
+    color: rgba(255,255,255,.92);
+  }
+  .enter {
+    align-self: flex-start;
+    display: inline-block;
+    background: #fff;
+    color: #5b6fd8;
+    border: none;
+    border-radius: 999px;
+    padding: 13px 26px;
+    font: 600 14.5px 'Hanken Grotesk', system-ui, sans-serif;
+    cursor: pointer;
+    letter-spacing: .01em;
+    text-decoration: none;
+  }
+
+  @media (max-width: 480px) {
+    .blob:hover, .blob.open { width: min(420px, calc(100vw - 32px)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blob, .blob:hover, .blob.open { animation: none; }
+    .shine { animation: none; }
+  }
+</style>
+</head>
+<body>
+<main class="stage">
+  <video autoplay muted loop playsinline src="/media/Cloud%20Video.mp4" poster="/media/landing%20bg.png"></video>
+
+  <div class="center">
+    <div class="blob" id="blob">
+      <div class="shine"></div>
+
+      <div class="collapsed">
+        <svg width="42" height="53" viewBox="0 0 22 28" fill="none" aria-hidden="true">
+          <line x1="11" y1="2" x2="11" y2="26" stroke="#fff" stroke-width="2.6"/>
+          <line x1="3" y1="9" x2="19" y2="9" stroke="#fff" stroke-width="2.6"/>
+        </svg>
+        <span class="mark">Shiloh</span>
+      </div>
+
+      <div class="expanded">
+        <div class="logo-row">
+          <svg width="24" height="30" viewBox="0 0 22 28" fill="none" aria-hidden="true">
+            <line x1="11" y1="2" x2="11" y2="26" stroke="#fff" stroke-width="2.6"/>
+            <line x1="3" y1="9" x2="19" y2="9" stroke="#fff" stroke-width="2.6"/>
+          </svg>
+          <span class="mark">Shiloh</span>
+        </div>
+        <p>
+          Shiloh is your scripture-grounded study companion. Ask about a verse, a chapter,
+          or a theme &mdash; Shiloh retrieves the relevant passages first, then answers from
+          them, so every response is rooted in the text.
+        </p>
+        <a class="enter" href="/app">Enter Shiloh</a>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+  // Touch devices have no hover: first tap opens the blob, the button then
+  // navigates. Desktop keeps the pure :hover behavior.
+  const blob = document.getElementById('blob');
+  blob.addEventListener('click', (e) => {
+    if (e.target.closest('.enter')) return;
+    if (window.matchMedia('(hover: none)').matches) blob.classList.toggle('open');
+  });
+</script>
+</body>
+</html>

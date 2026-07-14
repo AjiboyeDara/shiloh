@@ -71,9 +71,22 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
+MEDIA_DIR = os.path.join(os.path.dirname(__file__), "..", "media")
+if os.path.isdir(MEDIA_DIR):
+    app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+
 
 @app.get("/")
 def root():
+    """Landing page first; the chat app lives at /app."""
+    landing_path = os.path.join(FRONTEND_DIR, "landing.html")
+    if os.path.exists(landing_path):
+        return FileResponse(landing_path)
+    return chat_app()
+
+
+@app.get("/app")
+def chat_app():
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
