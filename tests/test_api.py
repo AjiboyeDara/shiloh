@@ -25,6 +25,18 @@ def test_health():
     assert client.get("/health").json() == {"status": "ok"}
 
 
+def test_root_serves_landing():
+    res = client.get("/")
+    assert res.status_code == 200
+    assert "Enter Shiloh" in res.text
+
+
+def test_app_serves_chat():
+    res = client.get("/app")
+    assert res.status_code == 200
+    assert "Search the scriptures" in res.text
+
+
 def test_chat_returns_answer_and_passages(monkeypatch):
     monkeypatch.setattr(
         app_main, "answer_question",
