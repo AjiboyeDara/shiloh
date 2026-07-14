@@ -129,7 +129,8 @@
   }
   .enter {
     align-self: flex-start;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
     background: #fff;
     color: #5b6fd8;
     border: none;
@@ -139,6 +140,24 @@
     cursor: pointer;
     letter-spacing: .01em;
     text-decoration: none;
+    transition: transform .25s cubic-bezier(.22,1,.36,1);
+  }
+  .enter:hover { transform: scale(1.06); }
+  .enter .enter-cross {
+    flex: none;
+    width: 0;
+    height: 15px;
+    margin-left: 0;
+    opacity: 0;
+    transform: scale(.4);
+    transition: width .25s cubic-bezier(.22,1,.36,1), margin-left .25s cubic-bezier(.22,1,.36,1),
+                opacity .2s ease, transform .3s cubic-bezier(.34,1.56,.64,1);
+  }
+  .enter:hover .enter-cross {
+    width: 12px;
+    margin-left: 7px;
+    opacity: 1;
+    transform: scale(1);
   }
 
   @media (max-width: 480px) {
@@ -176,7 +195,10 @@
           or a theme, and Shiloh retrieves the relevant passages first, then answers from
           them, so every response is rooted in the text.
         </p>
-        <a class="enter" href="/app">Enter Shiloh</a>
+        <a class="enter" href="/app">Enter Shiloh<svg class="enter-cross" viewBox="0 0 22 28" fill="none" aria-hidden="true">
+          <line x1="11" y1="2" x2="11" y2="26" stroke="#5b6fd8" stroke-width="3"/>
+          <line x1="3" y1="9" x2="19" y2="9" stroke="#5b6fd8" stroke-width="3"/>
+        </svg></a>
       </div>
     </div>
   </div>
