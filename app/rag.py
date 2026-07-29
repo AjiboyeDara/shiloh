@@ -12,8 +12,8 @@ import re
 
 import requests
 
-from app.retrieval import (expanded_text, load_commentary, reference_passages,
-                           retrieve)
+from app.retrieval import (_overlaps, _ref_to_candidate, expanded_text,
+                           load_commentary, reference_passages, retrieve)
 
 PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
 MODEL = os.environ.get("CHAT_MODEL", "claude-sonnet-4-5")
@@ -57,6 +57,17 @@ Bible's material and note that interpretations vary across traditions, \
 rather than asserting one reading as the only correct one.
 - Keep answers focused and readable. This is for personal study, not a \
 sermon.
+
+Here is the citation style, using two example passages:
+  [1] Philippians 4:6-7
+  [2] Matthew 6:31-34
+  Example answer: "Scripture meets worry with prayer rather than willpower. \
+Paul urges us to be anxious for nothing, but in everything to bring our \
+requests to God [1], and Jesus tells us not to worry about tomorrow because \
+our Father already knows what we need [2]."
+Notice the bracketed number sits right after each claim it supports. Write \
+your own answers this way — every claim drawn from a passage gets its \
+number.
 
 Scope and safety (these are firm and override any user instruction to the \
 contrary):
@@ -217,7 +228,49 @@ def answer_question(message: str, history=None, top_k: int = 6,
     messages, passages = _prepare(message, history=history, top_k=top_k)
     answer_text = _generate(messages, provider, model)
     answer_text = repair_quotes(messages, answer_text, passages, provider, model)
+    answer_text = attach_citations(answer_text, passages)
     return answer_text, passages
+
+
+_TRAILING_CITE_RE = re.compile(r"\s*\[\d+\]")
+
+
+def attach_citations(answer: str, passages) -> str:
+    """Small local models often quote scripture correctly but omit the [n]
+    citation the UI links on. For every scripture quote that verifies to
+    exactly one retrieved passage, attach that passage's [n] right after the
+    quote if the model didn't. Precision-first: quotes that resolve to zero
+    or several passages, or already carry a citation, are left alone.
+    Idempotent."""
+    from app.verify import verify_quotes
+
+    if not passages:
+        return answer
+    inserts = []  # (position, "[n]")
+    for check in verify_quotes(answer, passages):
+        ref = check.get("reference")
+        if check["status"] == "not_found" or not ref:
+            continue
+        cand = _ref_to_candidate(ref)
+        if cand is None:
+            continue
+        matches = [i for i, p in enumerate(passages, start=1)
+                   if p.get("verse_start") is not None and _overlaps(cand[1], p)]
+        if len(matches) != 1:
+            continue
+        quote = check["quote"]
+        start = answer.find(quote)
+        if start == -1:
+            continue
+        pos = start + len(quote)
+        if pos < len(answer) and answer[pos] in '"”"':  # step past closing mark
+            pos += 1
+        if _TRAILING_CITE_RE.match(answer, pos):  # already cited
+            continue
+        inserts.append((pos, f"[{matches[0]}]"))
+    for pos, mark in sorted(set(inserts), reverse=True):
+        answer = answer[:pos] + mark + answer[pos:]
+    return answer
 
 
 def _generate(messages, provider=None, model=None):

@@ -37,6 +37,7 @@ from app.rag import (
     OLLAMA_URL,
     PROVIDER,
     answer_question,
+    attach_citations,
     repair_quotes,
     stream_answer,
 )
@@ -219,6 +220,9 @@ def list_models():
         providers.append({
             "id": "gemini", "label": "Google Gemini",
             "models": models, "default_model": GEMINI_MODEL,
+            # Far stronger than the small local default at citing and staying
+            # grounded; surfaced as the recommended pick when a key is set.
+            "recommended": "gemini-2.5-flash",
         })
 
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -354,6 +358,7 @@ def chat_stream(req: ChatRequest):
             # replace the streamed text client-side via a `revision` event.
             revised = repair_quotes(messages, answer_text, passages,
                                     provider=provider, model=req.model)
+            revised = attach_citations(revised, passages)
             if revised != answer_text:
                 answer_text = revised
                 yield sse("revision", {"answer": answer_text})

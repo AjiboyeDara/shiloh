@@ -50,6 +50,32 @@ def test_repair_survives_generation_failure(monkeypatch):
     assert rag.repair_quotes([], FABRICATED, PASSAGES) == FABRICATED
 
 
+JOHN3 = [{
+    "reference": "John 3:16", "text": "…",
+    "book": "John", "chapter": 3, "verse_start": 16, "verse_end": 16,
+}]
+QUOTE = "For God so loved the world, that he gave his only begotten Son"
+
+
+@needs_data
+def test_attach_citations_adds_missing_marker():
+    answer = f'Jesus taught that, "{QUOTE}."'
+    out = rag.attach_citations(answer, JOHN3)
+    assert out == f'Jesus taught that, "{QUOTE}."[1]'
+
+
+@needs_data
+def test_attach_citations_leaves_cited_quote_alone():
+    answer = f'Jesus taught that, "{QUOTE}" [1].'
+    assert rag.attach_citations(answer, JOHN3) == answer
+
+
+@needs_data
+def test_attach_citations_skips_unverifiable_quote():
+    answer = 'The text says, "the aardvark danced upon the printing press."'
+    assert rag.attach_citations(answer, JOHN3) == answer
+
+
 @needs_data
 def test_build_context_expands_top_passages():
     context = rag.build_context(PASSAGES)

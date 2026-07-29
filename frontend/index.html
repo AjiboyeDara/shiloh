@@ -1164,7 +1164,7 @@ async function loadModels() {
       for (const m of p.models) {
         const opt = document.createElement('option');
         opt.value = `${p.id}|${m}`;
-        opt.textContent = m;
+        opt.textContent = m === p.recommended ? `${m} — recommended` : m;
         group.appendChild(opt);
       }
       modelSelect.appendChild(group);
