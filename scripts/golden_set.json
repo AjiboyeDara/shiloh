@@ -232,6 +232,70 @@
     {
       "question": "What does the Bible say about tithing and giving?",
       "expected": ["Malachi 3:10", "2 Corinthians 9:6-7", "Luke 6:38"]
+    },
+    {
+      "question": "what does the helmet represent?",
+      "history": [
+        {"role": "user", "content": "Where does the Bible describe the armor of God?"},
+        {"role": "assistant", "content": "The armor of God is described in Ephesians 6, where Paul lists the belt of truth, the breastplate of righteousness, the shield of faith, the helmet of salvation, and the sword of the Spirit [1]."}
+      ],
+      "expected": ["Ephesians 6:17"]
+    },
+    {
+      "question": "what about verse 28?",
+      "history": [
+        {"role": "user", "content": "What did Paul teach about hope when life is hard?"},
+        {"role": "assistant", "content": "In Romans 8, Paul writes that the sufferings of this present time are not worthy to be compared with the glory which shall be revealed in us [1], and that nothing can separate us from the love of God."}
+      ],
+      "expected": ["Romans 8:28"]
+    },
+    {
+      "question": "what did the father do when he came home?",
+      "history": [
+        {"role": "user", "content": "Tell me about the parable of the prodigal son."},
+        {"role": "assistant", "content": "The parable in Luke 15:11-32 tells of a younger son who wasted his inheritance in a far country, then returned home in shame [1]."}
+      ],
+      "expected": ["Luke 15:20-24"]
+    },
+    {
+      "question": "what happened right after he won?",
+      "history": [
+        {"role": "user", "content": "How did David defeat Goliath?"},
+        {"role": "assistant", "content": "In 1 Samuel 17, David refused Saul's armor and felled Goliath with a sling and a stone, trusting the LORD rather than weapons of war [1]."}
+      ],
+      "expected": ["1 Samuel 17:50-58"]
+    },
+    {
+      "question": "what was the one about prayer again?",
+      "history": [
+        {"role": "user", "content": "I have been feeling anxious about everything lately, what should I read?"},
+        {"role": "assistant", "content": "Philippians 4:6-7 urges believers to be careful for nothing, but in every thing by prayer and supplication to make requests known to God [1]. Matthew 6 also says to take no thought for tomorrow [2]."}
+      ],
+      "expected": ["Philippians 4:6-7"]
+    },
+    {
+      "question": "how many times am I supposed to forgive?",
+      "history": [
+        {"role": "user", "content": "What does Jesus teach about forgiving people who hurt me?"},
+        {"role": "assistant", "content": "In Matthew 18, Peter asks the Lord how often he should forgive his brother, and Jesus answers not seven times, but until seventy times seven [1]."}
+      ],
+      "expected": ["Matthew 18:21-22"]
+    },
+    {
+      "question": "what was made on the sixth day?",
+      "history": [
+        {"role": "user", "content": "How does the Bible begin?"},
+        {"role": "assistant", "content": "Genesis 1 opens with God creating the heaven and the earth, forming light, sky, seas, and living creatures across six days [1]."}
+      ],
+      "expected": ["Genesis 1:24-31"]
+    },
+    {
+      "question": "what does the valley part mean?",
+      "history": [
+        {"role": "user", "content": "Can you walk me through the shepherd psalm?"},
+        {"role": "assistant", "content": "Psalm 23 pictures the LORD as a shepherd who leads beside still waters, restores the soul, and prepares a table in the presence of enemies [1]."}
+      ],
+      "expected": ["Psalms 23:4"]
     }
   ]
 }

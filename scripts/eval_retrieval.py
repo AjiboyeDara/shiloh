@@ -22,9 +22,11 @@ import json
 import os
 import re
 import sys
+from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
+from app.rag import _retrieval_query  # noqa: E402
 from app.retrieval import canonical_book, retrieve  # noqa: E402
 
 GOLDEN_PATH = os.path.join(os.path.dirname(__file__), "golden_set.json")
@@ -68,7 +70,11 @@ def main():
 
     for q in questions:
         expected = [parse_ref(r) for r in q["expected"]]
-        results = retrieve(q["question"], top_k=args.top_k)
+        # Follow-up cases carry conversation history; build the retrieval
+        # query the same way the app does.
+        history = [SimpleNamespace(**t) for t in q.get("history", [])]
+        query = _retrieval_query(q["question"], history) if history else q["question"]
+        results = retrieve(query, top_k=args.top_k)
 
         found = [any(passage_matches(p, ref) for p in results) for ref in expected]
         recall = sum(found) / len(expected)

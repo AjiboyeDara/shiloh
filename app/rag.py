@@ -12,7 +12,8 @@ import re
 
 import requests
 
-from app.retrieval import expanded_text, load_commentary, retrieve
+from app.retrieval import (expanded_text, load_commentary, reference_passages,
+                           retrieve)
 
 PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
 MODEL = os.environ.get("CHAT_MODEL", "claude-sonnet-4-5")
@@ -153,13 +154,24 @@ HISTORY_LIMIT = 12
 
 def _retrieval_query(message: str, history):
     """Short follow-ups ("what about verse 5?") retrieve poorly on their
-    own, so fold the previous user question into the retrieval query.
-    Longer messages are assumed to stand alone."""
-    if history and len(message.split()) < 12:
-        prev = next((t.content for t in reversed(history) if t.role == "user"), None)
-        if prev:
-            return f"{prev}\n{message}"
-    return message
+    own, so fold in the previous user question plus any scripture
+    references the last assistant turn named — "verse 28" only resolves
+    against the chapter just discussed. Longer messages are assumed to
+    stand alone. References typed in the message itself come first, so
+    they keep priority in reference-aware retrieval."""
+    if not history or len(message.split()) >= 12:
+        return message
+    parts = [message]
+    prev = next((t.content for t in reversed(history) if t.role == "user"), None)
+    if prev:
+        parts.insert(0, prev)
+    last_answer = next(
+        (t.content for t in reversed(history) if t.role == "assistant"), None)
+    if last_answer:
+        refs = [p["reference"] for p in reference_passages(last_answer)]
+        if refs:
+            parts.append(" ".join(refs))
+    return "\n".join(parts)
 
 
 def _prepare(message: str, history=None, top_k: int = 6):
