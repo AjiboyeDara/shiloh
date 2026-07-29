@@ -77,6 +77,18 @@ def test_attach_citations_skips_unverifiable_quote():
 
 
 @needs_data
+def test_attach_citations_handles_fragment_substring():
+    # The short quote is a prefix substring of the long one; the marker must
+    # land after each closing quote, never mid-sentence inside the long quote.
+    answer = (f'It says, "{QUOTE}." '
+              'The phrase "For God so loved the world" is universal.')
+    out = rag.attach_citations(answer, JOHN3)
+    assert 'begotten Son."[1]' in out
+    assert 'the world"[1] is universal' in out
+    assert 'the world[1]' not in out  # no citation broke the long quote
+
+
+@needs_data
 def test_build_context_expands_top_passages():
     context = rag.build_context(PASSAGES)
     # The chunk ends at v20, but the prompt must include the story's ending.

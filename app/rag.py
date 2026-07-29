@@ -258,14 +258,22 @@ def attach_citations(answer: str, passages) -> str:
                    if p.get("verse_start") is not None and _overlaps(cand[1], p)]
         if len(matches) != 1:
             continue
+        # Insert only after an occurrence actually closed by a quotation
+        # mark. A short quote can be a substring of a longer one (the model
+        # quotes a verse in full, then a fragment of it); a plain find() would
+        # land inside the longer quote and cite mid-sentence.
         quote = check["quote"]
-        start = answer.find(quote)
-        if start == -1:
-            continue
-        pos = start + len(quote)
-        if pos < len(answer) and answer[pos] in '"”"':  # step past closing mark
-            pos += 1
-        if _TRAILING_CITE_RE.match(answer, pos):  # already cited
+        pos, search = -1, 0
+        while True:
+            hit = answer.find(quote, search)
+            if hit == -1:
+                break
+            after = hit + len(quote)
+            if after < len(answer) and answer[after] in '"”':
+                pos = after + 1
+                break
+            search = hit + 1
+        if pos == -1 or _TRAILING_CITE_RE.match(answer, pos):  # unclosed / already cited
             continue
         inserts.append((pos, f"[{matches[0]}]"))
     for pos, mark in sorted(set(inserts), reverse=True):
