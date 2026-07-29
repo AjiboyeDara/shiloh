@@ -61,16 +61,25 @@ def check_citations(answer: str, passage_count: int):
     return all(1 <= n <= passage_count for n in nums), bool(nums)
 
 
-def judge_grounded(question: str, answer: str, passages):
-    """Ask the configured LLM whether the answer sticks to its passages.
-    Judged against the same expanded context build_context gives the
-    answerer, so chapter-widened claims aren't false negatives."""
+def judge_grounded(question: str, answer: str, passages,
+                   provider=None, model=None):
+    """Ask an LLM whether the answer sticks to its passages. Judged against
+    the same expanded context build_context gives the answerer, so
+    chapter-widened claims aren't false negatives. Use a different (stronger)
+    provider than the answerer via provider/model — a model grading its own
+    output is unreliable."""
     prompt = JUDGE_PROMPT.format(
         context=build_context(passages), question=question, answer=answer
     )
-    reply = _generate([{"role": "user", "content": prompt}])
+    reply = _generate([{"role": "user", "content": prompt}], provider, model)
     verdict = reply.strip().lower()
     return verdict.startswith("yes"), reply.strip().splitlines()[0][:120]
+
+
+def default_judge_provider():
+    """Prefer Gemini as judge when its key is present (free, and a stronger
+    grader than the local model), else fall back to the configured provider."""
+    return "gemini" if os.environ.get("GEMINI_API_KEY") else None
 
 
 def main():
@@ -81,6 +90,12 @@ def main():
     ap.add_argument("--top-k", type=int, default=6)
     ap.add_argument("--no-judge", action="store_true",
                     help="skip the LLM groundedness judge")
+    ap.add_argument("--judge-provider", default=default_judge_provider(),
+                    help="provider for the groundedness judge "
+                         "(default: gemini if GEMINI_API_KEY set, else the "
+                         "answerer's provider)")
+    ap.add_argument("--judge-model", default=None,
+                    help="model for the judge within its provider")
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -109,7 +124,9 @@ def main():
 
         verdict_note = ""
         if not args.no_judge:
-            is_grounded, reason = judge_grounded(question, answer, passages)
+            is_grounded, reason = judge_grounded(
+                question, answer, passages,
+                provider=args.judge_provider, model=args.judge_model)
             judged += 1
             grounded += is_grounded
             if not is_grounded:
@@ -145,7 +162,8 @@ def main():
               f"mismatch {quote_counts['mismatch']}, "
               f"not_found {quote_counts['not_found']})")
     if judged:
-        print(f"grounded (judge): {grounded / judged:.3f}   ({grounded}/{judged} answers)")
+        judge = args.judge_provider or "answerer's provider"
+        print(f"grounded (judge): {grounded / judged:.3f}   ({grounded}/{judged} answers, judge={judge})")
     if problems and not args.verbose:
         print(f"\n{len(problems)} answer(s) with issues:")
         for question, issues in problems:
