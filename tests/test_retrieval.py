@@ -199,3 +199,21 @@ def test_rerank_disabled_passes_through(monkeypatch):
     # Unrelated queries pass through untouched.
     q2 = "the walls of Jericho"
     assert retrieval._expand_query(q2) == q2
+
+
+# ── cross-reference expansion ────────────────────────────────────────────
+
+def test_ref_to_candidate_parses_single_and_range():
+    doc, meta = retrieval._ref_to_candidate("Romans 8:28")
+    assert meta["book"] == "Romans" and meta["chapter"] == 8
+    assert meta["verse_start"] == 28 and meta["verse_end"] == 28
+    assert doc.startswith("28.")
+
+    _, meta = retrieval._ref_to_candidate("Luke 15:20-24")
+    assert meta["verse_start"] == 20 and meta["verse_end"] == 24
+    assert meta["reference"] == "Luke 15:20-24"
+
+
+def test_ref_to_candidate_rejects_garbage():
+    assert retrieval._ref_to_candidate("not a reference") is None
+    assert retrieval._ref_to_candidate("Nowhere 99:1") is None

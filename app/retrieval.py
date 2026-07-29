@@ -264,6 +264,7 @@ def search_passages(query: str, top_k: int = 6):
                 fused[id_] = [contribution, data["documents"][i], data["metadatas"][i]]
 
     ranked = sorted(fused.values(), key=lambda x: -x[0])
+    ranked = _crossref_expand(ranked)
     ranked = _rerank(raw_query, _apply_floor(ranked)[:_CANDIDATES])
     return [_as_passage(doc, meta) for _, doc, meta in _diversify(ranked, top_k)]
 
@@ -301,6 +302,61 @@ def _rerank(query, candidates):
     scores = reranker.predict(pairs)
     order = sorted(range(len(candidates)), key=lambda i: -scores[i])
     return [candidates[i] for i in order]
+
+
+# Cross-reference expansion: verses cross-referenced from the top fused
+# hits join the candidate pool at a fraction of their parent's score.
+# Off by default until it wins the golden-set eval; CROSSREF_EXPAND=1 to try.
+CROSSREF_EXPAND = os.environ.get("CROSSREF_EXPAND", "") == "1"
+_CROSSREF_WEIGHT = 0.5   # child score = parent score × this
+_CROSSREF_PARENTS = 3    # expand only this many top hits
+
+_REF_STRING_RE = re.compile(r"^(.+?)\s+(\d+):(\d+)(?:-(\d+))?$")
+
+
+def _ref_to_candidate(ref: str):
+    """'Romans 8:28' or 'Luke 15:20-24' -> (doc, meta) chunk, or None."""
+    m = _REF_STRING_RE.match(ref.strip())
+    if not m:
+        return None
+    book = canonical_book(m.group(1))
+    chapter, v1 = int(m.group(2)), int(m.group(3))
+    v2 = int(m.group(4) or v1)
+    verses = [v for v in _load_all_verses().get((book, chapter), [])
+              if v1 <= v["verse"] <= v2]
+    if not verses:
+        return None
+    meta = {
+        "reference": f"{book} {chapter}:{v1}" + (f"-{v2}" if v2 != v1 else ""),
+        "book": book, "chapter": chapter, "verse_start": v1, "verse_end": v2,
+    }
+    return " ".join(f"{v['verse']}. {v['text']}" for v in verses), meta
+
+
+def _covered(cmeta, metas):
+    for m in metas:
+        if m["book"] != cmeta["book"] or m["chapter"] != cmeta["chapter"]:
+            continue
+        vs, ve = m.get("verse_start"), m.get("verse_end")
+        if vs is None or not (ve < cmeta["verse_start"] or cmeta["verse_end"] < vs):
+            return True
+    return False
+
+
+def _crossref_expand(ranked):
+    """No-op unless CROSSREF_EXPAND=1 and cross-reference data is on disk."""
+    if not CROSSREF_EXPAND or not ranked:
+        return ranked
+    existing = [meta for _, _, meta in ranked]
+    added = []
+    for score, _, meta in ranked[:_CROSSREF_PARENTS]:
+        for ref in passage_cross_references(meta):
+            cand = _ref_to_candidate(ref)
+            if cand is None or _covered(cand[1], existing):
+                continue
+            existing.append(cand[1])
+            added.append([score * _CROSSREF_WEIGHT, cand[0], cand[1]])
+    return sorted(ranked + added, key=lambda x: -x[0]) if added else ranked
 
 
 def _diversify(ranked, top_k):
