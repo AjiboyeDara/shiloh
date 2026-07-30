@@ -211,3 +211,29 @@ def test_rate_limit_enforced(monkeypatch):
     # Non-chat endpoints are not limited.
     assert client.get("/health").status_code == 200
     app_main._rate_buckets.clear()
+
+
+def test_search_shares_the_chat_limit(monkeypatch):
+    """Search runs the embedding model, so it spends from the chat budget."""
+    monkeypatch.setattr(app_main, "retrieve", lambda query, top_k=6: FAKE_PASSAGES)
+    monkeypatch.setattr(app_main, "RATE_LIMIT_PER_MINUTE", 1)
+    app_main._rate_buckets.clear()
+    assert client.post("/api/search", json={"query": "love"}).status_code == 200
+    assert client.post("/api/search", json={"query": "love"}).status_code == 429
+    app_main._rate_buckets.clear()
+
+
+@needs_data
+def test_word_study_has_its_own_roomier_bucket(monkeypatch):
+    """Word study is click-driven, so it must not 429 at the chat limit."""
+    monkeypatch.setattr(app_main, "retrieve", lambda query, top_k=6: FAKE_PASSAGES)
+    monkeypatch.setattr(app_main, "RATE_LIMIT_PER_MINUTE", 1)
+    app_main._rate_buckets.clear()
+    # Spend the entire chat budget...
+    assert client.post("/api/search", json={"query": "love"}).status_code == 200
+    assert client.post("/api/search", json={"query": "love"}).status_code == 429
+    # ...word study keeps answering, up to its own 6× cap.
+    for _ in range(6):
+        assert client.get("/api/word-study", params={"word": "loved"}).status_code == 200
+    assert client.get("/api/word-study", params={"word": "loved"}).status_code == 429
+    app_main._rate_buckets.clear()

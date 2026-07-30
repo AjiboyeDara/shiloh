@@ -77,12 +77,18 @@ def _parse_origins(raw: str):
     return [o.strip() for o in raw.split(",") if o.strip()]
 
 
-# Per-IP rate limit on the chat endpoints (they're the ones that spend LLM
-# calls). Disabled by default so localhost dev is unaffected; set
-# CHAT_RATE_LIMIT to a requests-per-minute cap when hosting publicly.
+# Per-IP rate limits. Disabled by default so localhost dev is unaffected;
+# set CHAT_RATE_LIMIT to a requests-per-minute cap when hosting publicly.
+#   chat  — the endpoints that spend LLM calls, plus /api/search, which runs
+#           the embedding model on every request.
+#   tool  — /api/word-study, which scans all 31k verses. It's click-driven
+#           (a reader may open a dozen words in a minute), so it gets its own
+#           roomier bucket instead of eating the chat budget. Defaults to 6×
+#           the chat limit; override with TOOL_RATE_LIMIT.
 RATE_LIMIT_PER_MINUTE = int(os.environ.get("CHAT_RATE_LIMIT", 0))
+TOOL_RATE_LIMIT = int(os.environ.get("TOOL_RATE_LIMIT", 0))
 TRUST_PROXY = os.environ.get("TRUST_PROXY") == "1"
-_rate_buckets: dict = defaultdict(deque)
+_rate_buckets: dict = defaultdict(deque)  # (scope, ip) -> request timestamps
 
 
 def _client_ip(request: Request) -> str:
@@ -93,23 +99,33 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def rate_limit(request: Request):
-    if RATE_LIMIT_PER_MINUTE <= 0:
+def _consume(scope: str, limit: int, request: Request):
+    if limit <= 0:
         return
     now = time.monotonic()
-    ip = _client_ip(request)
-    bucket = _rate_buckets[ip]
+    key = (scope, _client_ip(request))
+    bucket = _rate_buckets[key]
     while bucket and now - bucket[0] > 60:
         bucket.popleft()
-    if len(bucket) >= RATE_LIMIT_PER_MINUTE:
+    if len(bucket) >= limit:
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded; please wait a moment and try again.",
         )
     bucket.append(now)
-    # Drop other IPs' stale buckets so the dict can't grow unboundedly.
+    # Drop other clients' stale buckets so the dict can't grow unboundedly.
     for other in [k for k, v in _rate_buckets.items() if v and now - v[-1] > 60]:
         del _rate_buckets[other]
+
+
+# Both limits are read at request time, not captured here, so tests (and a
+# reload) see the current values.
+def rate_limit(request: Request):
+    _consume("chat", RATE_LIMIT_PER_MINUTE, request)
+
+
+def tool_rate_limit(request: Request):
+    _consume("tool", TOOL_RATE_LIMIT or RATE_LIMIT_PER_MINUTE * 6, request)
 
 
 def _warm_retrieval():
@@ -237,7 +253,8 @@ def list_models():
     return {"providers": providers, "default_provider": PROVIDER}
 
 
-@app.post("/api/search", response_model=SearchResponse)
+@app.post("/api/search", response_model=SearchResponse,
+          dependencies=[Depends(rate_limit)])
 def search(req: SearchRequest):
     try:
         results = retrieve(req.query, top_k=req.top_k)
@@ -291,7 +308,8 @@ def passage_text(book: str, chapter: int, translation: str = "kjv",
     )
 
 
-@app.get("/api/word-study", response_model=WordStudyResponse)
+@app.get("/api/word-study", response_model=WordStudyResponse,
+         dependencies=[Depends(tool_rate_limit)])
 def word_study_endpoint(word: str, book: str | None = None,
                         chapter: int | None = None,
                         start: int | None = None, end: int | None = None):

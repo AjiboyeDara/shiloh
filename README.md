@@ -177,10 +177,15 @@ keep localhost development frictionless):
   (default `*`). Set it to your site, e.g.
   `CORS_ORIGINS=https://bible.example.com`.
 - `CHAT_RATE_LIMIT` — per-IP requests per minute on the two chat endpoints
-  (default `0` = disabled). `CHAT_RATE_LIMIT=10` is a sane public setting;
-  over the limit returns HTTP 429. If the app sits behind a reverse proxy,
-  also set `TRUST_PROXY=1` so the limit keys on `X-Forwarded-For` instead
-  of the proxy's own address.
+  and `/api/search` (which runs the embedding model on every call; default
+  `0` = disabled). `CHAT_RATE_LIMIT=10` is a sane public setting; over the
+  limit returns HTTP 429. If the app sits behind a reverse proxy, also set
+  `TRUST_PROXY=1` so the limit keys on `X-Forwarded-For` instead of the
+  proxy's own address.
+- `TOOL_RATE_LIMIT` — per-IP requests per minute on `/api/word-study`,
+  which scans the whole KJV. Defaults to 6× `CHAT_RATE_LIMIT`, since
+  clicking words is how the panel is used and it shouldn't spend the chat
+  budget. Also disabled whenever `CHAT_RATE_LIMIT` is.
 - `APP_PASSWORD` — when set, the whole app (everything but `/health`)
   requires HTTP Basic auth with this password (any username). The browser
   prompts once and remembers; use it to share an instance without sharing
