@@ -102,10 +102,38 @@ REFUSAL_MESSAGE = (
     "glad to dig into it with you."
 )
 
+# Reply for someone who sounds like they're in danger from themselves. The
+# system prompt already tells the model to answer these with compassion and
+# real-world help; the gate below would otherwise short-circuit that with the
+# off-topic refusal, which is the wrong thing to say to a person in crisis.
+CRISIS_MESSAGE = (
+    "I'm glad you told me. I'm not the help you need for this, and I don't "
+    "want to leave you carrying it alone — please reach out to someone you "
+    "trust, or to a crisis line: in the US you can call or text 988, and "
+    "most countries have their own. If you're in immediate danger, call your "
+    "local emergency number.\n\n"
+    "You are not beyond God's reach, and what you're feeling right now is "
+    "not the whole truth about you. \"The LORD is nigh unto them that are of "
+    "a broken heart; and saveth such as be of a contrite spirit\" "
+    "(Psalm 34:18).\n\n"
+    "If you were asking about this as a question of doctrine rather than "
+    "about yourself, say so and I'll walk through the passages with you."
+)
+
 # Conservative patterns for clearly harmful, instruction-seeking requests.
 # Written to require an instruction verb ("how to make", "build me", etc.)
 # next to a dangerous object so that ordinary Bible questions mentioning
 # war, killing, or weapons in a narrative sense are not caught.
+#
+# Deliberately NOT in the object list — each one refused a real study
+# question when it was: bare "steal" ("how can I steal no more?", Eph 4:28),
+# "weapon" ("the weapons of our warfare", 2 Cor 10:4), "poison" ("the poison
+# of the tongue", James 3:8), bare "gun"/"firearm", bare "virus", bare
+# "murder", and "kill ... my" ("how can I kill my sinful nature", "my
+# pride", "my old self" — mortification of the flesh is stock Bible study).
+# kill/murder/poison now need a person as the object. The system prompt and
+# the provider's own safety remain the primary guardrails; this is only a net
+# for the weaker local model, so it errs toward letting questions through.
 _HARM_PATTERNS = [
     re.compile(p, re.IGNORECASE)
     for p in [
@@ -113,23 +141,41 @@ _HARM_PATTERNS = [
         r"instructions? (for|to|on)|teach me to|show me how to|help me "
         r"(make|build|create)|make me|build me)\b.{0,60}\b("
         r"bomb|explosive|grenade|molotov|napalm|detonator|"
-        r"gun|firearm|silencer|weapon|poison|nerve agent|"
+        r"silencer|ghost gun|untraceable (gun|firearm)|nerve agent|"
         r"meth|methamphetamine|cocaine|heroin|fentanyl|"
-        r"malware|ransomware|virus|keylogger|"
-        r"kill (someone|a person|people|my)|murder|"
-        r"hack (into|someone|a )|steal)\b",
-        r"\bhow (do|can) (i|you|we)\b.{0,40}\b(kill myself|end my life|"
-        r"commit suicide|hurt myself)\b",
+        r"malware|ransomware|keylogger|"
+        r"(kill|murder|poison) (someone|somebody|a person|people|him|her)|"
+        r"hack (into|someone|a ))\b",
+    ]
+]
+
+# First-person self-harm phrasing, matched with no "how do I" prefix — a
+# statement of intent needs the same response as a question. "commit suicide"
+# is left out: it reads as a doctrinal question ("is suicide a sin?") at
+# least as often as a personal one, and those should reach the model.
+_CRISIS_PATTERNS = [
+    re.compile(p, re.IGNORECASE)
+    for p in [
+        r"\b(kill|killing) myself\b",
+        r"\b(end|ending) my (life|own life)\b",
+        r"\b(take|taking) my own life\b",
+        r"\b(hurt|hurting|harm|harming) myself\b",
     ]
 ]
 
 
-def _is_disallowed(message: str) -> bool:
-    """Fast, conservative check for clearly harmful instruction-seeking
-    requests. This is a safety net in front of the LLM (important for the
-    weaker local Ollama model); the system prompt is the primary guardrail."""
+def _gate(message: str):
+    """The canned reply for a message that must not reach the model, or None
+    to proceed. A safety net in front of the LLM (important for the weaker
+    local Ollama model); the system prompt is the primary guardrail. Crisis
+    is checked first — "how do I kill myself" matches both lists, and the
+    compassionate reply is the right one."""
     text = message or ""
-    return any(pat.search(text) for pat in _HARM_PATTERNS)
+    if any(pat.search(text) for pat in _CRISIS_PATTERNS):
+        return CRISIS_MESSAGE
+    if any(pat.search(text) for pat in _HARM_PATTERNS):
+        return REFUSAL_MESSAGE
+    return None
 
 
 # Retrieved chunks are widened to their surrounding chapter in the prompt
@@ -220,10 +266,12 @@ def _prepare(message: str, history=None, top_k: int = 6):
 
 def answer_question(message: str, history=None, top_k: int = 6,
                     provider: str = None, model: str = None):
-    # Defense-in-depth: refuse clearly harmful requests before they ever
-    # reach the model (the local Ollama model has weak built-in safety).
-    if _is_disallowed(message):
-        return REFUSAL_MESSAGE, []
+    # Defense-in-depth: harmful requests and crisis messages get a canned
+    # reply before they ever reach the model (the local Ollama model has weak
+    # built-in safety).
+    canned = _gate(message)
+    if canned:
+        return canned, []
 
     messages, passages = _prepare(message, history=history, top_k=top_k)
     answer_text = _generate(messages, provider, model)
@@ -344,8 +392,9 @@ def stream_answer(message: str, history=None, top_k: int = 6,
     the assembled prompt, so the caller can run repair_quotes on the
     finished answer."""
     # Same defense-in-depth gate as answer_question, on the streaming path.
-    if _is_disallowed(message):
-        return [], iter([REFUSAL_MESSAGE]), []
+    canned = _gate(message)
+    if canned:
+        return [], iter([canned]), []
 
     messages, passages = _prepare(message, history=history, top_k=top_k)
 
