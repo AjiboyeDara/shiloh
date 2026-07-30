@@ -18,5 +18,11 @@ jobs:
       # multi-GB CUDA wheels on a runner with no GPU.
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -r requirements.txt
-      # Bible data isn't committed; data-dependent tests skip themselves.
+      # Bible data isn't committed, and roughly half the suite is gated on
+      # it (verification, quote repair, reference parsing). The fetch is
+      # ~12MB and needs no embedding index, so CI runs it; if the source is
+      # down, those tests skip themselves as before instead of failing the
+      # build. The one Strong's-tagged test still skips — it needs a
+      # separate multi-file fetch.
+      - run: python scripts/download_bible.py || echo "bible download failed; data-dependent tests will skip"
       - run: python -m pytest -q
