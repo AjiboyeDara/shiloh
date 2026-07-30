@@ -8,10 +8,6 @@ import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv
-
-load_dotenv()  # must run before app.rag reads provider/model settings at import
-
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse

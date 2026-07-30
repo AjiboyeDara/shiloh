@@ -115,6 +115,44 @@ def test_expand_query_kjv_synonyms():
     assert "holy ghost" in retrieval._expand_query("the Holy Spirit's role").lower()
 
 
+def _rewrite(monkeypatch, reply, query):
+    """Run _rewrite_query against a canned provider reply."""
+    from app import rag
+    monkeypatch.setattr(rag, "_generate", lambda *a, **kw: reply)
+    retrieval._rewrite_query.cache_clear()
+    return retrieval._rewrite_query(query)
+
+
+def test_rewrite_query_adds_to_the_synonym_map(monkeypatch):
+    """Additive: the curated terms are a floor the model only adds to."""
+    query = "What is the Great Commission?"
+    out = _rewrite(monkeypatch, "Go ye therefore, teach all nations", query)
+    assert out == f"{retrieval._expand_query(query)} (Go ye therefore, teach all nations)"
+    assert "preach the gospel" in out  # the mapped terms survived
+
+
+def test_rewrite_query_strips_preamble_and_bullets(monkeypatch):
+    out = _rewrite(monkeypatch, "Search terms:\n- take no thought\n- careful for nothing",
+                   "anxiety")
+    assert out.endswith("(take no thought careful for nothing)")
+
+
+def test_rewrite_query_falls_back_when_provider_fails(monkeypatch):
+    """A dead provider must degrade to the synonym map, not break search."""
+    from app import rag
+
+    def boom(*a, **kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(rag, "_generate", boom)
+    retrieval._rewrite_query.cache_clear()
+    query = "the Holy Spirit's role"
+    assert retrieval._rewrite_query(query) == retrieval._expand_query(query)
+
+
+def test_rewrite_query_falls_back_on_empty_reply(monkeypatch):
+    assert _rewrite(monkeypatch, "   \n", "worry") == retrieval._expand_query("worry")
+
+
 # ── context expansion ────────────────────────────────────────────────────
 
 @needs_data

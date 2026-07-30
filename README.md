@@ -207,6 +207,39 @@ keep localhost development frictionless):
   seem to misjudge KJV text, so a candidate should likely be fine-tuned or
   chosen for archaic English
 
+### Retrieval baseline and experiment log
+
+Current baseline on the 66-question golden set (`all-MiniLM-L6-v2` + BM25
+with RRF, synonym-map query expansion, `top_k=6`):
+
+```
+recall@6:    0.780
+hit@6:       0.985   (65/66 questions)
+chapters@6:  4.89 distinct per result set
+```
+
+**LLM query rewriting lost (2026-07).** The synonym map only covers gaps
+someone thought to add, so asking the model for the KJV's own wording ought
+to generalize better. It doesn't — `QUERY_REWRITE=1` (off by default, with
+`REWRITE_PROVIDER` / `REWRITE_MODEL` to pick the rewriting model) measured:
+
+| Variant | recall@6 | hit@6 |
+|---|---|---|
+| Baseline (synonym map only) | **0.780** | **0.985** |
+| Rewrite replaces the map — `llama3.2` | 0.492 | 0.742 |
+| Rewrite replaces the map — `gemini-2.5-flash-lite` | 0.525 | 0.727 |
+| Map **+** rewrite (additive) — `gemini-2.5-flash-lite` | 0.703 | 0.924 |
+
+Two things showed up. A small local model invents archaic-*sounding* prose
+rather than recalling actual KJV phrases ("what afflictions of the mind are
+to be borne with patience" for anxiety, where the KJV says "take no
+thought"), which poisons both retrievers. Gemini does produce real KJV
+wording ("Go ye therefore, teach all nations"), and additive expansion
+recovers most of the gap — but generated terms still dilute BM25 and pull
+the query embedding off the curated centroid. The flag stays off; the code
+path is kept and tested so the experiment is cheap to repeat with a better
+prompt or a KJV-tuned model.
+
 ## License
 
 Code: MIT (see `LICENSE`). The KJV Bible text is public domain. Any

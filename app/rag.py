@@ -329,13 +329,15 @@ def attach_citations(answer: str, passages) -> str:
     return answer
 
 
-def _generate(messages, provider=None, model=None):
+def _generate(messages, provider=None, model=None, system=SYSTEM_PROMPT):
+    """`system` is overridable for the small utility calls (query rewriting,
+    the eval judge) that shouldn't inherit Shiloh's teaching persona."""
     provider = (provider or PROVIDER).lower()
     if provider == "ollama":
-        return _generate_ollama(messages, model or OLLAMA_MODEL)
+        return _generate_ollama(messages, model or OLLAMA_MODEL, system)
     if provider == "gemini":
-        return _generate_gemini(messages, model or GEMINI_MODEL)
-    return _generate_anthropic(messages, model or MODEL)
+        return _generate_gemini(messages, model or GEMINI_MODEL, system)
+    return _generate_anthropic(messages, model or MODEL, system)
 
 
 def _flagged(checks):
@@ -408,12 +410,12 @@ def stream_answer(message: str, history=None, top_k: int = 6,
     return passages, gen, messages
 
 
-def _generate_gemini(messages, model):
+def _generate_gemini(messages, model, system=SYSTEM_PROMPT):
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
         headers={"x-goog-api-key": os.environ["GEMINI_API_KEY"]},
         json={
-            "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "system_instruction": {"parts": [{"text": system}]},
             "contents": [
                 {
                     "role": "model" if m["role"] == "assistant" else "user",
@@ -445,12 +447,12 @@ def _check_ollama_response(response, model):
     raise RuntimeError(f"Ollama error: {detail}.{hint}")
 
 
-def _generate_ollama(messages, model):
+def _generate_ollama(messages, model, system=SYSTEM_PROMPT):
     response = requests.post(
         f"{OLLAMA_URL}/api/chat",
         json={
             "model": model,
-            "messages": [{"role": "system", "content": SYSTEM_PROMPT}] + messages,
+            "messages": [{"role": "system", "content": system}] + messages,
             "stream": False,
             # num_ctx: Ollama's 4096 default would silently truncate the
             # expanded passage context from the front of the prompt.
@@ -462,14 +464,14 @@ def _generate_ollama(messages, model):
     return response.json()["message"]["content"]
 
 
-def _generate_anthropic(messages, model):
+def _generate_anthropic(messages, model, system=SYSTEM_PROMPT):
     from anthropic import Anthropic
 
     client = Anthropic()  # reads ANTHROPIC_API_KEY from env
     response = client.messages.create(
         model=model,
         max_tokens=1200,
-        system=SYSTEM_PROMPT,
+        system=system,
         messages=messages,
     )
     return "".join(

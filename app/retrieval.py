@@ -6,6 +6,7 @@ commentary, and Strong's data if the user has populated resources/.
 import json
 import os
 import re
+import sys
 from functools import lru_cache
 
 import chromadb
@@ -163,6 +164,49 @@ def _expand_query(query: str):
     return query
 
 
+# The synonym map above only covers gaps someone thought to add. Asking the
+# LLM for the KJV's own wording generalizes to questions nobody anticipated,
+# at the cost of one generation call before retrieval. Off until it beats the
+# golden-set baseline; QUERY_REWRITE=1 to try it.
+QUERY_REWRITE = os.environ.get("QUERY_REWRITE", "") == "1"
+# The rewrite is a small utility call, so it can run on a different (cheaper
+# or stronger) model than the answer. Defaults to the configured provider.
+REWRITE_PROVIDER = os.environ.get("REWRITE_PROVIDER") or None
+REWRITE_MODEL = os.environ.get("REWRITE_MODEL") or None
+
+_REWRITE_SYSTEM = (
+    "You translate modern questions into King James Version vocabulary for a "
+    "search index. Reply with search terms only — the archaic words and "
+    "phrases the KJV itself uses for the ideas in the question. No "
+    "explanation, no numbering, no references, one line."
+)
+
+
+@lru_cache(maxsize=512)
+def _rewrite_query(query: str):
+    """Synonym-map expansion plus LLM-supplied KJV wording — additive, so the
+    curated terms stay as a floor and the model only adds. Falls back to the
+    map alone if the provider is unreachable or answers with nothing usable,
+    so a dead provider degrades retrieval instead of breaking it."""
+    from app.rag import _generate  # local: app.rag imports this module
+    expanded = _expand_query(query)
+    try:
+        reply = _generate(
+            [{"role": "user", "content": f"Question: {query}"}],
+            provider=REWRITE_PROVIDER, model=REWRITE_MODEL,
+            system=_REWRITE_SYSTEM,
+        )
+        lines = [ln.strip(" -*\t") for ln in reply.strip().splitlines() if ln.strip()]
+        terms = " ".join(ln for ln in lines if not ln.endswith(":"))[:300]
+        return f"{expanded} ({terms})" if terms else expanded
+    except Exception as e:
+        # Loud on purpose: a silently degraded rewrite looks like a bad
+        # retrieval change when you're measuring one.
+        print(f"query rewrite failed ({type(e).__name__}: {e}); "
+              f"falling back to the synonym map", file=sys.stderr)
+        return expanded
+
+
 def _tokenize(text: str):
     return re.findall(r"[a-z']+", text.lower())
 
@@ -216,7 +260,7 @@ def search_passages(query: str, top_k: int = 6):
     """Hybrid semantic + lexical search. Returns a list of dicts:
     reference, text, book, chapter, verse_start, verse_end."""
     raw_query = query  # the reranker reads the query without synonym padding
-    query = _expand_query(query)
+    query = _rewrite_query(query) if QUERY_REWRITE else _expand_query(query)
     model = get_embedder()
     collection = get_collection()
 
