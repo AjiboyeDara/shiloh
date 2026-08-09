@@ -1247,6 +1247,26 @@ input.addEventListener('keydown', (e) => {
   }
 });
 
+// Auto-scroll is a latch, not a per-token distance check. A distance check
+// loses during fast streaming: deltas land faster than a scroll gesture can
+// clear the threshold, so every wheel tick gets yanked back to the bottom and
+// the reader can never get away. Instead, one scroll off the bottom turns
+// following off until they come back to the bottom themselves.
+let follow = true;
+let autoTop = -1;  // the scrollTop we last set ourselves
+
+function stick() {
+  if (!follow) return;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  autoTop = messagesEl.scrollTop;
+}
+
+messagesEl.addEventListener('scroll', () => {
+  if (messagesEl.scrollTop === autoTop) return;  // our own scroll, not theirs
+  const gap = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight;
+  follow = gap <= 2;
+}, { passive: true });
+
 function addMessage(role, contentHtml, refs, setIdx) {
   document.getElementById('emptyState')?.remove();
   const wrap = document.createElement('div');
@@ -1266,9 +1286,9 @@ function addMessage(role, contentHtml, refs, setIdx) {
     </div>`;
     wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}${tools}`;
   }
-  const follow = role === 'user' || nearBottom();
+  if (role === 'user') follow = true;  // asking a new question rejoins the bottom
   messagesEl.appendChild(wrap);
-  if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+  stick();
   return wrap;
 }
 
@@ -1302,12 +1322,6 @@ function regenerateLast() {
   }
   input.value = text;
   composer.requestSubmit();
-}
-
-// Follow streaming output only while the reader is already at the bottom;
-// someone who scrolled up to read stays put until they scroll back down.
-function nearBottom() {
-  return messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
 }
 
 // Each assistant reply's passages are kept here; message elements carry the
@@ -1914,18 +1928,16 @@ composer.addEventListener('submit', async (e) => {
         // The server re-checked the quoted scripture and sent a corrected
         // answer; it replaces the streamed text.
         ensureAnswerMsg();
-        const follow = nearBottom();
         answerRaw = payload.answer;
         bubble.innerHTML = formatAnswer(answerRaw);
-        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+        stick();
       } else if (type === 'error') {
         throw new Error(payload.message || 'Generation failed');
       } else if (payload.delta) {
         ensureAnswerMsg();
-        const follow = nearBottom();
         answerRaw += payload.delta;
         bubble.innerHTML = formatAnswer(answerRaw);
-        if (follow) messagesEl.scrollTop = messagesEl.scrollHeight;
+        stick();
       }
     });
 
