@@ -168,3 +168,33 @@ def test_build_context_expands_top_passages():
     # The chunk ends at v20, but the prompt must include the story's ending.
     assert "Divide the living child" in context
     assert "[1] 1 Kings 3\n" in context
+
+
+# ── Reading plan day parsing ─────────────────────────────────────────────
+# Verses in a plan come from retrieval, never from the model. That holds
+# because any reference the model emits is deleted here before the title is
+# ever used as a query — so the guarantee is structural, not prompt-based.
+@needs_data
+def test_parse_plan_days_strips_refs_headings_and_numbering():
+    reply = (
+        "Day 1: Creation (Genesis 1:1)\n"
+        "- 2. The Fall\n"
+        "Summary:\n"
+        "Waiting on God in Psalm 27\n"
+        "Waiting on God\n"          # duplicate once the reference is gone
+        "3) Grace abounding, see Romans 5:20-21\n"
+    )
+    assert rag._parse_plan_days(reply, 7) == [
+        "Creation", "The Fall", "Waiting on God", "Grace abounding",
+    ]
+
+
+def test_parse_plan_days_caps_at_requested_count():
+    reply = "\n".join(f"Subtopic number {i}" for i in range(10))
+    assert len(rag._parse_plan_days(reply, 3)) == 3
+
+
+def test_plan_days_gates_harmful_themes():
+    days, canned = rag.plan_days("how to make a bomb", days=3)
+    assert days == []
+    assert canned == rag.REFUSAL_MESSAGE

@@ -20,6 +20,9 @@ from app.models import (
     ChatResponse,
     PassageResult,
     PassageTextResponse,
+    PlanDay,
+    PlanRequest,
+    PlanResponse,
     SearchRequest,
     SearchResponse,
     WordStudyResponse,
@@ -34,6 +37,7 @@ from app.rag import (
     PROVIDER,
     answer_question,
     attach_citations,
+    plan_days,
     repair_quotes,
     stream_answer,
 )
@@ -260,6 +264,35 @@ def search(req: SearchRequest):
             detail=f"Search index not available yet. Run scripts/build_index.py first. ({e})",
         )
     return SearchResponse(results=[PassageResult(**r) for r in results])
+
+
+@app.post("/api/plan", response_model=PlanResponse,
+          dependencies=[Depends(rate_limit)])
+def plan(req: PlanRequest):
+    """A themed reading plan: one model call for the day subtopics, then
+    local retrieval for each day's verses, so the references are real."""
+    provider = (req.provider or PROVIDER).lower()
+    _check_provider_key(provider)
+    try:
+        days, canned = plan_days(
+            req.theme, days=req.days, provider=provider, model=req.model,
+        )
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail=OLLAMA_DOWN_MSG)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not build a plan. Is the index built? "
+                   f"Run scripts/build_index.py first. ({e})",
+        )
+    if canned:
+        raise HTTPException(status_code=400, detail=canned)
+    if not days:
+        raise HTTPException(
+            status_code=502,
+            detail="The model didn't return a usable plan. Try again, or try a different theme.",
+        )
+    return PlanResponse(theme=req.theme, days=[PlanDay(**d) for d in days])
 
 
 @app.get("/api/chapter", response_model=ChapterResponse)

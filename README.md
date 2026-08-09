@@ -49,6 +49,17 @@ question ──▶ embed query ──▶ search local vector index ──▶ top
   how the KJV renders it) plus a concordance of everywhere it occurs. With
   the Strong's-tagged KJV fetched (`scripts/fetch_strongs_kjv.py`), the
   entry shown is the exact word tagged at that verse, not a candidate list.
+- **Reading plans**: give a theme and a number of days (`/api/plan`) and one
+  model call returns the day subtopics — no verse references, and any the
+  model emits anyway are stripped by regex before use. Each day's passages
+  then come from the same hybrid retrieval the chat uses, so a plan can't
+  cite a verse that doesn't exist. Days appear as chips above the composer;
+  tapping one asks it as a normal question and marks it done.
+- **Saved verses**: star any retrieved passage to keep it in the "Saved" tab
+  of the passages pane. Kept in the browser, independent of conversations.
+- **Backup**: the conversations menu exports the active conversation as
+  Markdown, or everything — conversations, saved verses, reading plan — as a
+  JSON backup that imports back by merging, never overwriting.
 - **Extras**: cross-references, Strong's dictionaries, the tagged KJV, and
   Matthew Henry's chapter commentary are all fetched by `scripts/setup.py`
   out of the box; commentary is fed into the model's context whenever a
@@ -127,7 +138,7 @@ from candidate entries to the exact tagged word per verse.
 
 ```
 app/
-  main.py         FastAPI app + routes (/api/chat, /api/chat/stream, /api/search, /api/chapter, /api/word-study)
+  main.py         FastAPI app + routes (/api/chat, /api/chat/stream, /api/search, /api/plan, /api/chapter, /api/word-study)
   rag.py          Prompting + LLM calls (blocking + streaming)
   retrieval.py    Hybrid search, reference parsing, resource lookups
   verify.py       Word-for-word quote verification against the KJV
@@ -195,7 +206,6 @@ keep localhost development frictionless):
 
 - Multi-translation comparison view (per-passage KJV/BSB toggle exists;
   side-by-side is the next step)
-- Reading plans / study guides generated from a theme
 - A stronger embedding model, measured with `scripts/eval_retrieval.py`.
   `EMBED_MODEL` and an optional cross-encoder rerank stage (`RERANK_MODEL`)
   are env-configurable to make experiments cheap. Tried so far (2026-07),

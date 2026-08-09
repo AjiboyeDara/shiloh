@@ -355,7 +355,6 @@
     justify-content: space-between;
     gap: 10px;
   }
-  .sheet-head h2 { margin: 0 0 18px; }
 
   /* ── Chat column ────────────────────────── */
   .chat-col {
@@ -422,6 +421,9 @@
   .msg-tools button:hover { color: var(--accent); border-color: var(--accent); }
   .msg-regen { display: none; }
   .msg.assistant:last-child .msg-regen { display: inline-block; }
+  /* Follow-up chips are built with the answer, so hide them on the bubble
+     that is still streaming — they'd sit under a half-written reply. */
+  body.sending .msg.assistant:last-child .followups { display: none; }
   .msg.assistant .role {
     display: flex;
     align-items: center;
@@ -579,6 +581,18 @@
     transform: translateY(-1px);
     box-shadow: inset 0 1px 0 var(--glass-highlight), 0 4px 14px -6px rgba(0, 0, 0, 0.25);
   }
+  /* Reading-plan chips reuse .prompt-btn; only the plan-specific bits here. */
+  .plan-label {
+    align-self: center;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 2px;
+  }
+  .plan-day.done { opacity: 0.5; text-decoration: line-through; }
+  .plan-clear { padding: 9px 12px; color: var(--ink-faint); }
   .composer {
     display: flex;
     gap: 12px;
@@ -640,14 +654,24 @@
     overflow-y: auto;
     background: var(--side-tint);
   }
-  .passages h2 {
+  /* Pane header: the old h2's type, split across two tabs. */
+  .sheet-tabs { display: flex; gap: 16px; margin: 0 0 18px; }
+  .sheet-tab {
+    font-family: 'Inter', sans-serif;
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.18em;
-    color: var(--ink-soft);
-    margin: 0 0 18px;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    border-bottom: 1.5px solid transparent;
+    padding: 0 0 4px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
   }
+  .sheet-tab:hover { color: var(--ink-soft); }
+  .sheet-tab.on { color: var(--ink-soft); border-bottom-color: var(--accent); }
   .passage-card {
     border: 1px solid var(--glass-border);
     background: var(--glass-bg);
@@ -693,6 +717,20 @@
     padding: 3px 10px;
     white-space: nowrap;
   }
+  .star {
+    font-size: 12px;
+    line-height: 1;
+    color: var(--ink-faint);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+    border-radius: 4px;
+    padding: 4px 7px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .star:hover { color: var(--accent); border-color: var(--accent); }
+  .star.on { color: var(--accent); border-color: var(--accent); }
   .head-tools {
     display: flex;
     align-items: center;
@@ -1066,7 +1104,10 @@
 
     <aside class="passages" id="passagesPane">
       <div class="sheet-head">
-        <h2>Retrieved passages</h2>
+        <div class="sheet-tabs" role="tablist">
+          <button type="button" class="sheet-tab on" id="tabRetrieved">Retrieved</button>
+          <button type="button" class="sheet-tab" id="tabSaved">Saved</button>
+        </div>
         <button class="sheet-close" id="sheetClose" aria-label="Close passages">&#10005;</button>
       </div>
       <div id="passageList">
@@ -1089,6 +1130,8 @@ const passageList = document.getElementById('passageList');
 const passagesPane = document.getElementById('passagesPane');
 const sheetFab = document.getElementById('sheetFab');
 const sheetClose = document.getElementById('sheetClose');
+const tabRetrieved = document.getElementById('tabRetrieved');
+const tabSaved = document.getElementById('tabSaved');
 
 // Snapshots for restoring the initial UI after "New conversation".
 const EMPTY_STATE_HTML = messagesEl.innerHTML;
@@ -1227,14 +1270,99 @@ function renderPrompts() {
     .join('');
 }
 
-promptsEl.addEventListener('click', e => {
-  const btn = e.target.closest('.prompt-btn');
-  if (!btn) return;
-  input.value = btn.dataset.p;
+// Every chip that asks a question goes through here. The submit handler bails
+// on isSending *after* preventDefault, so without this guard a chip clicked
+// mid-answer would silently strand its text in the textarea.
+function ask(text) {
+  if (isSending) return;
+  input.value = text;
   composer.requestSubmit();
+}
+
+// --- Reading plan ---
+// A plan is a prompt source, not a container: its own key, so tapping day 3
+// drops that answer into whatever conversation is open, and none of the
+// conversation code has to know plans exist. One plan at a time.
+const PLAN_KEY = 'shiloh-plan';
+let plan = loadPlan();
+
+function loadPlan() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PLAN_KEY));
+    return v && Array.isArray(v.days) && v.days.length ? v : null;
+  } catch (e) { return null; }
+}
+function savePlan() {
+  try {
+    if (plan) localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
+    else localStorage.removeItem(PLAN_KEY);
+  } catch (e) { /* plan is small; if this fails the chips still work today */ }
+}
+
+function renderPlanChips() {
+  if (!plan) { renderPrompts(); return; }
+  const chips = plan.days.map((d, i) => {
+    const q = `${plan.theme}: ${d.title}`;
+    return `<button class="prompt-btn plan-day${d.done ? ' done' : ''}" data-day="${i}"
+             data-p="${escapeAttr(q)}" title="${escapeAttr((d.refs || []).join(' · '))}">Day ${i + 1} &middot; ${escapeHtml(d.title)}</button>`;
+  }).join('');
+  promptsEl.innerHTML =
+    `<span class="plan-label">${escapeHtml(plan.theme)}</span>${chips}` +
+    `<button class="prompt-btn plan-clear" title="Clear this reading plan">&#10005;</button>`;
+}
+
+async function newPlan() {
+  const theme = prompt('Reading plan theme — a topic, a book, a question:');
+  if (!theme || !theme.trim()) return;
+  const days = Math.min(14, Math.max(1, parseInt(prompt('How many days? (1-14)', '7'), 10) || 7));
+  const btn = convMenu.querySelector('.conv-plan');
+  if (btn) { btn.disabled = true; btn.textContent = 'Building plan…'; }
+  try {
+    const res = await fetch('/api/plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ theme: theme.trim(), days, ...selectedModel() }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Could not build a plan.');
+    plan = {
+      version: 1, theme: data.theme, createdAt: Date.now(),
+      // Render what came back, never the number asked for: days whose
+      // retrieval found nothing are dropped server-side.
+      days: data.days.map(d => ({ title: d.title, refs: d.references, done: false })),
+    };
+    savePlan();
+    renderPlanChips();
+    closeConvMenu();
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'New reading plan…'; }
+  }
+}
+
+promptsEl.addEventListener('click', e => {
+  if (e.target.closest('.plan-clear')) {
+    if (!confirm('Clear this reading plan?')) return;
+    plan = null;
+    savePlan();
+    renderPlanChips();
+    return;
+  }
+  const day = e.target.closest('.plan-day');
+  if (day) {
+    if (isSending) return;
+    ask(day.dataset.p);
+    plan.days[+day.dataset.day].done = true;
+    savePlan();
+    renderPlanChips();
+    return;
+  }
+  const btn = e.target.closest('.prompt-btn');
+  if (btn) ask(btn.dataset.p);
 });
 
-renderPrompts();
+renderPlanChips();
 
 input.addEventListener('input', () => {
   input.style.height = 'auto';
@@ -1267,6 +1395,29 @@ messagesEl.addEventListener('scroll', () => {
   follow = gap <= 2;
 }, { passive: true });
 
+// "Go deeper" chips under a finished answer, built from the cross-references
+// already attached to that answer's passages — no extra model call. The
+// question names both verses on purpose: reference_passages() pulls direct
+// references out of a query and retrieve() seats them first (MAX_REF_PASSAGES
+// is 2), so the follow-up is guaranteed to land on exactly those two passages.
+function followupsHtml(passages) {
+  if (!passages || !passages.length) return '';
+  const onScreen = new Set(passages.map(p => `${p.book} ${p.chapter}`));
+  const chips = [];
+  for (const p of passages.slice(0, 3)) {
+    const xref = (p.cross_references || [])[0];
+    if (!xref) continue;
+    const chapterOf = xref.replace(/:.*$/, '');
+    if (onScreen.has(chapterOf)) continue;  // already in the pane; teaches nothing
+    onScreen.add(chapterOf);
+    const q = `How does ${xref} relate to ${p.reference}?`;
+    chips.push(`<button type="button" class="xref-chip" data-p="${escapeAttr(q)}">${escapeHtml(xref)}</button>`);
+    if (chips.length === 3) break;
+  }
+  if (!chips.length) return '';
+  return `<div class="xrefs followups"><span class="xref-label">Go deeper</span>${chips.join('')}</div>`;
+}
+
 function addMessage(role, contentHtml, refs, setIdx) {
   document.getElementById('emptyState')?.remove();
   const wrap = document.createElement('div');
@@ -1284,7 +1435,8 @@ function addMessage(role, contentHtml, refs, setIdx) {
       <button type="button" class="msg-copy" title="Copy answer">Copy</button>
       <button type="button" class="msg-regen" title="Ask this question again">Regenerate</button>
     </div>`;
-    wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}${tools}`;
+    const fu = setIdx !== undefined ? followupsHtml(passageSets[setIdx]) : '';
+    wrap.innerHTML = `<div class="role"><span class="cross-sm">&#10013;</span>Shiloh</div><div class="bubble">${contentHtml}</div>${refsHtml}${tools}${fu}`;
   }
   if (role === 'user') follow = true;  // asking a new question rejoins the bottom
   messagesEl.appendChild(wrap);
@@ -1305,7 +1457,9 @@ messagesEl.addEventListener('click', (e) => {
     });
     return;
   }
-  if (e.target.closest('.msg-regen')) regenerateLast();
+  if (e.target.closest('.msg-regen')) { regenerateLast(); return; }
+  const fu = e.target.closest('.followups .xref-chip');
+  if (fu) ask(fu.dataset.p);
 });
 
 function regenerateLast() {
@@ -1329,22 +1483,100 @@ function regenerateLast() {
 const passageSets = [];
 let shownSet = -1;
 
-function renderPassages(setIdx, stagger = false) {
-  const passages = passageSets[setIdx];
-  if (!passages || !passages.length) return;
-  shownSet = setIdx;
-  passageList.innerHTML = passages.map((p, i) => {
-    const xr = p.cross_references || [];
-    const xrefsHtml = xr.length
-      ? `<div class="xrefs"><span class="xref-label">See also</span>${
-          xr.map(r => `<button type="button" class="xref-chip" data-ref="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')
-        }</div>`
-      : '';
-    return `
-    <div class="passage-card" data-n="${i + 1}"
+// --- Saved passages ---
+// Stored whole, exactly as they arrive from the API: the card renderer reads
+// cross_references, and setCardTranslation / toggleChapter / word study all
+// read book+chapter+verse range back off the card's dataset.
+const SAVED_KEY = 'shiloh-saved';
+const SAVED_MAX = 200;   // ~140 KB; localStorage is shared with conversations
+let saved = loadSaved();
+let activeTab = 'retrieved';
+
+function loadSaved() {
+  try {
+    const v = JSON.parse(localStorage.getItem(SAVED_KEY));
+    return Array.isArray(v) ? v : [];
+  } catch (e) { return []; }
+}
+function saveSaved() {
+  try { localStorage.setItem(SAVED_KEY, JSON.stringify(saved)); return true; }
+  catch (e) { return false; }
+}
+function isSaved(p) {
+  return saved.some(s => s.reference === p.reference);
+}
+
+function setActiveTab(tab) {
+  activeTab = tab;
+  tabRetrieved.classList.toggle('on', tab === 'retrieved');
+  tabSaved.classList.toggle('on', tab === 'saved');
+}
+function syncSavedTab() {
+  tabSaved.textContent = saved.length ? `Saved · ${saved.length}` : 'Saved';
+}
+
+// Only the clicked card is touched — re-rendering the list here would collapse
+// an open chapter panel somewhere else in the pane.
+function toggleSaved(card, btn) {
+  const ref = card.querySelector('.ref')?.textContent || '';
+  const at = saved.findIndex(s => s.reference === ref);
+  if (at >= 0) {
+    saved.splice(at, 1);
+  } else {
+    if (saved.length >= SAVED_MAX) {
+      alert(`Saved verses are capped at ${SAVED_MAX}. Remove one to save another.`);
+      return;
+    }
+    const p = (passageSets[shownSet] || []).find(x => x.reference === ref);
+    if (!p) return;
+    saved.push(p);
+  }
+  if (!saveSaved()) {
+    alert('Could not save — browser storage is full.');
+    saved = loadSaved();
+    return;
+  }
+  const on = at < 0;
+  btn.classList.toggle('on', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.title = on ? 'Remove from saved' : 'Save this passage';
+  syncSavedTab();
+  if (activeTab === 'saved') card.remove();
+  if (activeTab === 'saved' && !saved.length) renderSaved();
+}
+
+function renderSaved() {
+  setActiveTab('saved');
+  passageList.innerHTML = saved.length
+    ? saved.map(p => passageCardHtml(p)).join('')
+    : '<div class="placeholder"><div class="num-box">&#9733;</div><p>Star a passage to keep it here. Saved verses stay in this browser.</p></div>';
+  sheetFab.hidden = false;
+}
+
+tabSaved.addEventListener('click', renderSaved);
+tabRetrieved.addEventListener('click', () => {
+  if (shownSet >= 0) { renderPassages(shownSet); return; }
+  setActiveTab('retrieved');
+  passageList.innerHTML = PLACEHOLDER_HTML;
+});
+
+// One passage card. `opts.n` is the citation number — passing it adds the
+// data-n litCard() targets and the "Cited" pill. Saved cards omit it on
+// purpose: shownSet still points at the last answer while the Saved tab is
+// showing, so a data-n here would make citation hover light the wrong verse.
+function passageCardHtml(p, opts = {}) {
+  const xr = p.cross_references || [];
+  const xrefsHtml = xr.length
+    ? `<div class="xrefs"><span class="xref-label">See also</span>${
+        xr.map(r => `<button type="button" class="xref-chip" data-ref="${escapeHtml(r)}">${escapeHtml(r)}</button>`).join('')
+      }</div>`
+    : '';
+  const saved = isSaved(p);
+  return `
+    <div class="passage-card"${opts.n ? ` data-n="${opts.n}"` : ''}
          data-book="${escapeHtml(p.book)}" data-chapter="${p.chapter}"
          data-vstart="${p.verse_start ?? ''}" data-vend="${p.verse_end ?? ''}"
-         style="${stagger ? `animation-delay: ${i * 140}ms` : 'animation: none'}">
+         style="${opts.delay ? `animation-delay: ${opts.delay}ms` : 'animation: none'}">
       <div class="card-head">
         <div class="ref">${escapeHtml(p.reference)}</div>
         <div class="head-tools">
@@ -1353,7 +1585,9 @@ function renderPassages(setIdx, stagger = false) {
             <button type="button" data-t="kjv" class="on">KJV</button>
             <button type="button" data-t="bsb">BSB</button>
           </div>`}
-          <span class="cited-pill">Cited &middot; ${i + 1}</span>
+          <button type="button" class="star${saved ? ' on' : ''}" aria-pressed="${saved}"
+                  title="${saved ? 'Remove from saved' : 'Save this passage'}">&#9733;</button>
+          ${opts.n ? `<span class="cited-pill">Cited &middot; ${opts.n}</span>` : ''}
         </div>
       </div>
       <div class="verse-text" title="Click any word to study its original Hebrew or Greek">${escapeHtml(p.text)}</div>
@@ -1363,7 +1597,18 @@ function renderPassages(setIdx, stagger = false) {
         <span class="chev">&#9660;</span>
       </button>
     </div>`;
-  }).join('');
+}
+
+// New answers and citation clicks own the pane — both route through here, so
+// rendering retrieved passages always pulls the tab back from Saved.
+function renderPassages(setIdx, stagger = false) {
+  const passages = passageSets[setIdx];
+  if (!passages || !passages.length) return;
+  shownSet = setIdx;
+  setActiveTab('retrieved');
+  passageList.innerHTML = passages
+    .map((p, i) => passageCardHtml(p, { n: i + 1, delay: stagger ? i * 140 : 0 }))
+    .join('');
   sheetFab.hidden = false;
   sheetFab.textContent = `Passages · ${passages.length}`;
 }
@@ -1595,6 +1840,13 @@ async function openWordPanel(card, word, ctx = null) {
 }
 
 passageList.addEventListener('click', (e) => {
+  // The star must be matched before the catch-all button return further down,
+  // or the click is swallowed and nothing happens.
+  const starBtn = e.target.closest('.star');
+  if (starBtn) {
+    toggleSaved(starBtn.closest('.passage-card'), starBtn);
+    return;
+  }
   const txBtn = e.target.closest('.tx-toggle button');
   if (txBtn) {
     const panel = txBtn.closest('.chapter-panel');
@@ -1829,6 +2081,7 @@ let currentAbort = null;
 
 function setSendingUI(sending) {
   isSending = sending;
+  document.body.classList.toggle('sending', sending);
   if (sending) {
     sendBtn.classList.add('stop');
     sendBtn.textContent = 'Stop';
@@ -1991,8 +2244,12 @@ function loadConvIndex() {
   return null;
 }
 
+// Returns whether the write landed. Autosave callers ignore it; import checks
+// it, because a swallowed failure there would leave conversation bodies
+// written but unreachable while the user is told the import worked.
 function saveConvIndex() {
-  try { localStorage.setItem(CONV_INDEX_KEY, JSON.stringify(convIndex)); } catch (e) {}
+  try { localStorage.setItem(CONV_INDEX_KEY, JSON.stringify(convIndex)); return true; }
+  catch (e) { return false; }
 }
 
 function newConvId() {
@@ -2021,12 +2278,12 @@ function saveConversation() {
 }
 
 function restoreConversation(id) {
-  let saved;
-  try { saved = JSON.parse(localStorage.getItem(CONV_PREFIX + id)); } catch (e) { return; }
-  if (!saved || !Array.isArray(saved.history) || !saved.history.length) return;
-  history = saved.history;
+  let body;  // not `saved` — that's the saved-verses store at module scope
+  try { body = JSON.parse(localStorage.getItem(CONV_PREFIX + id)); } catch (e) { return; }
+  if (!body || !Array.isArray(body.history) || !body.history.length) return;
+  history = body.history;
   passageSets.length = 0;
-  (saved.passageSets || []).forEach(s => passageSets.push(s));
+  (body.passageSets || []).forEach(s => passageSets.push(s));
   for (const turn of history) {
     if (turn.role === 'user') {
       addMessage('user', escapeHtml(turn.content));
@@ -2048,7 +2305,10 @@ function resetUI() {
   shownSet = -1;
   messagesEl.innerHTML = EMPTY_STATE_HTML;
   passageList.innerHTML = PLACEHOLDER_HTML;
-  sheetFab.hidden = true;
+  setActiveTab('retrieved');
+  // Keep the mobile FAB alive when there are saved verses — it's the only way
+  // to reach the pane on a small screen.
+  sheetFab.hidden = !saved.length;
   closeSheet();
   loadVerseOfTheDay();
 }
@@ -2120,7 +2380,10 @@ function renderConvMenu() {
     : '';
   convMenu.innerHTML = filter
     + (rows || '<div class="conv-empty">No saved conversations yet.</div>')
-    + `<button type="button" class="conv-title conv-export"${history.length ? '' : ' disabled'}>Export as Markdown</button>`;
+    + `<button type="button" class="conv-title conv-plan">${plan ? 'Replace reading plan…' : 'New reading plan…'}</button>`
+    + `<button type="button" class="conv-title conv-export"${history.length ? '' : ' disabled'}>Export as Markdown</button>`
+    + `<button type="button" class="conv-title conv-export-json">Export backup (JSON)</button>`
+    + `<button type="button" class="conv-title conv-import">Import backup…</button>`;
   convMenu.querySelector('.conv-filter')?.addEventListener('input', (e) => {
     const q = e.target.value.trim().toLowerCase();
     convMenu.querySelectorAll('.conv-row').forEach(row => {
@@ -2142,6 +2405,9 @@ convMenuBtn.addEventListener('click', () => {
   convMenu.hidden ? openConvMenu() : closeConvMenu();
 });
 convMenu.addEventListener('click', (e) => {
+  if (e.target.closest('.conv-plan')) { newPlan(); return; }
+  if (e.target.closest('.conv-export-json')) { exportBackup(); return; }
+  if (e.target.closest('.conv-import')) { importBackup(); return; }
   if (e.target.closest('.conv-export')) { exportConversationMarkdown(); return; }
   const row = e.target.closest('.conv-row');
   if (!row) return;
@@ -2169,13 +2435,148 @@ function exportConversationMarkdown() {
     }
   }
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'conversation';
-  const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+  download(new Blob([lines.join('\n')], { type: 'text/markdown' }),
+           `shiloh-${slug}-${new Date().toISOString().slice(0, 10)}.md`);
+}
+
+function download(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `shiloh-${slug}-${new Date().toISOString().slice(0, 10)}.md`;
+  a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+// --- Whole-app backup ---
+// Deliberately separate from the Markdown export: that one is the active
+// conversation read out of memory for a human to read; this one is every key
+// in storage, for a machine to restore.
+const BACKUP_VERSION = 1;
+
+function exportBackup() {
+  saveConversation();  // the live conversation is only flushed after a reply
+  const conversations = [];
+  for (const id of convIndex.order) {
+    let body = null;
+    try { body = JSON.parse(localStorage.getItem(CONV_PREFIX + id)); } catch (e) {}
+    if (!body || !Array.isArray(body.history) || !body.history.length) continue;
+    const m = convIndex.meta[id] || {};
+    conversations.push({
+      id, title: m.title || '', customTitle: m.customTitle, updatedAt: m.updatedAt,
+      history: body.history, passageSets: body.passageSets || [],
+    });
+  }
+  const data = {
+    app: 'shiloh', version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    conversations, saved, plan,
+  };
+  download(new Blob([JSON.stringify(data)], { type: 'application/json' }),
+           `shiloh-backup-${new Date().toISOString().slice(0, 10)}.json`);
+}
+
+const validTurn = t => t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string';
+const validVerse = v => v && typeof v.reference === 'string' && typeof v.text === 'string'
+                     && typeof v.book === 'string' && typeof v.chapter === 'number';
+
+function importBackup() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/json,.json';
+  inp.onchange = async () => {
+    const file = inp.files && inp.files[0];
+    if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); }
+    catch (e) { alert('That file isn’t valid JSON.'); return; }
+    applyBackup(data);
+  };
+  inp.click();
+}
+
+function applyBackup(data) {
+  if (!data || typeof data !== 'object' || data.app !== 'shiloh' || data.version !== BACKUP_VERSION) {
+    alert('Not a Shiloh backup file.');
+    return;
+  }
+  if (!Array.isArray(data.conversations)) {
+    alert('That backup has no conversations in it.');
+    return;
+  }
+
+  // Validate everything before a single write. Bad conversations are skipped,
+  // not fatal — one corrupt entry shouldn't cost you the other twenty.
+  const convs = data.conversations.filter(c =>
+    c && Array.isArray(c.history) && c.history.length && c.history.every(validTurn));
+  const skipped = data.conversations.length - convs.length;
+  const verses = (data.saved || []).filter(validVerse)
+    .filter(v => !saved.some(s => s.reference === v.reference))
+    .slice(0, Math.max(0, SAVED_MAX - saved.length));
+  const incomingPlan = (data.plan && Array.isArray(data.plan.days) && data.plan.days.length) ? data.plan : null;
+  const planSkipped = !!incomingPlan && !!plan;
+
+  if (!convs.length && !verses.length && !(incomingPlan && !plan)) {
+    alert('Nothing new to import — everything in that file is already here or unreadable.');
+    return;
+  }
+  if (!confirm(`Import ${convs.length} conversation${convs.length === 1 ? '' : 's'} and `
+             + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}?\n\n`
+             + 'Nothing you already have will be replaced.')) return;
+
+  // Bodies first, index last. The index is the only thing that makes a body
+  // reachable, so a failure part-way through leaves existing data untouched
+  // and the half-written bodies orphaned — which the rollback then removes.
+  const written = [];
+  const staged = [];
+  const taken = new Set(Object.keys(convIndex.meta));
+  try {
+    for (const c of convs) {
+      const id = (!c.id || taken.has(c.id)) ? newConvId() : c.id;
+      taken.add(id);
+      const key = CONV_PREFIX + id;
+      localStorage.setItem(key, JSON.stringify({
+        history: c.history,
+        passageSets: Array.isArray(c.passageSets) ? c.passageSets : [],
+      }));
+      written.push(key);
+      staged.push([id, {
+        title: c.title || convTitleFrom(c.history),
+        customTitle: c.customTitle,
+        updatedAt: c.updatedAt || Date.now(),
+      }]);
+    }
+  } catch (e) {
+    written.forEach(k => localStorage.removeItem(k));
+    alert('Import failed — browser storage is full. Nothing was imported.');
+    return;
+  }
+
+  // Imported conversations go on the end; `order` is most-recent-first, so
+  // this never displaces the list the user is already working in.
+  const prevOrder = convIndex.order.slice();
+  const prevMeta = { ...convIndex.meta };
+  staged.forEach(([id, meta]) => { convIndex.order.push(id); convIndex.meta[id] = meta; });
+  if (!saveConvIndex()) {
+    convIndex.order = prevOrder;
+    convIndex.meta = prevMeta;
+    written.forEach(k => localStorage.removeItem(k));
+    saveConvIndex();
+    alert('Import failed — browser storage is full. Nothing was imported.');
+    return;
+  }
+
+  if (verses.length) { saved.push(...verses); saveSaved(); syncSavedTab(); }
+  if (incomingPlan && !plan) {
+    plan = incomingPlan;
+    savePlan();
+  }
+  renderPlanChips();
+  renderConvMenu();
+  alert(`Imported ${staged.length} conversation${staged.length === 1 ? '' : 's'} and `
+      + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}.`
+      + (skipped ? `\n${skipped} unreadable conversation${skipped === 1 ? '' : 's'} skipped.` : '')
+      + (planSkipped ? '\nKept your existing reading plan.' : ''));
 }
 
 // --- Verse of the day (empty state) ---
@@ -2261,6 +2662,8 @@ async function loadVerseOfTheDay() {
     : (convIndex.order[0] || newConvId());
   restoreConversation(activeId);
   renderConvMenu();
+  syncSavedTab();
+  if (saved.length) sheetFab.hidden = false;
   if (!history.length) loadVerseOfTheDay();
 })();
 </script>

@@ -280,6 +280,61 @@ def answer_question(message: str, history=None, top_k: int = 6,
     return answer_text, passages
 
 
+_PLAN_SYSTEM = (
+    "You lay out short Bible reading plans. Given a theme and a number of "
+    "days, reply with exactly that many lines, one line per day: a short "
+    "subtopic of three to eight words. No verse references, no numbering, no "
+    "headings, no explanation."
+)
+
+_DAY_PREFIX_RE = re.compile(r"^(day\s*\d+|\d+)\s*[.:)-]\s*", re.IGNORECASE)
+
+
+def _parse_plan_days(reply: str, days: int):
+    """Day subtopics from a line-per-day reply. Any scripture reference the
+    model slipped in is deleted rather than trusted — that is what makes the
+    plan's verses come from retrieval only, whatever the model does."""
+    from app.retrieval import _reference_pattern
+    ref_re, _ = _reference_pattern()
+    titles, seen = [], set()
+    for line in reply.strip().splitlines():
+        line = _DAY_PREFIX_RE.sub("", line.strip(" -*\t"))
+        if line.endswith(":"):   # a heading the model added, not a day
+            continue
+        line = ref_re.sub("", line)
+        line = re.sub(r"[\s(),;]+", " ", line).strip(" -–—:.")
+        # Deleting a reference can leave the preposition that introduced it.
+        line = re.sub(r"\s+(in|of|from|at|to|and|with|see|read|cf)$", "", line, flags=re.I)
+        if not line or line.lower() in seen:
+            continue
+        seen.add(line.lower())
+        titles.append(line)
+        if len(titles) == days:
+            break
+    return titles
+
+
+def plan_days(theme: str, days: int = 7, provider: str = None, model: str = None):
+    """(days, canned_refusal). One model call for the subtopics, then local
+    retrieval for the verses, so no reference here is ever invented. A day
+    whose retrieval comes back empty is dropped instead of shipped blank."""
+    canned = _gate(theme)
+    if canned:
+        return [], canned
+
+    reply = _generate(
+        [{"role": "user", "content": f"Theme: {theme}\nDays: {days}"}],
+        provider, model, system=_PLAN_SYSTEM,
+    )
+    out = []
+    for title in _parse_plan_days(reply, days):
+        # The theme rides along: a bare four-word subtopic retrieves noise.
+        refs = [p["reference"] for p in retrieve(f"{theme} {title}", top_k=3)]
+        if refs:
+            out.append({"title": title, "references": refs})
+    return out, None
+
+
 _TRAILING_CITE_RE = re.compile(r"\s*\[\d+\]")
 
 

@@ -88,3 +88,24 @@ class SearchRequest(BaseModel):
 
 class SearchResponse(BaseModel):
     results: List[PassageResult]
+
+
+class PlanRequest(BaseModel):
+    # The theme goes into the prompt and into every day's retrieval query, so
+    # it is bounded here rather than trusting the caller.
+    theme: str = Field(..., min_length=1, max_length=200)
+    # Capped at 14: the day chips share the composer's suggestion strip, and
+    # thirty of them is a wall.
+    days: int = Field(7, ge=1, le=14)
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+class PlanDay(BaseModel):
+    title: str
+    references: List[str] = []
+
+
+class PlanResponse(BaseModel):
+    theme: str
+    days: List[PlanDay]

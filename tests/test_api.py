@@ -237,3 +237,40 @@ def test_word_study_has_its_own_roomier_bucket(monkeypatch):
         assert client.get("/api/word-study", params={"word": "loved"}).status_code == 200
     assert client.get("/api/word-study", params={"word": "loved"}).status_code == 429
     app_main._rate_buckets.clear()
+
+
+# ── Reading plans ────────────────────────────────────────────────────────
+def test_plan_returns_days_with_references(monkeypatch):
+    monkeypatch.setattr(
+        app_main, "plan_days",
+        lambda theme, days=7, provider=None, model=None: (
+            [{"title": "Bearing with one another", "references": ["Colossians 3:13"]}], None),
+    )
+    res = client.post("/api/plan", json={"theme": "forgiveness", "days": 3})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["theme"] == "forgiveness"
+    assert body["days"][0]["references"] == ["Colossians 3:13"]
+
+
+def test_plan_refuses_harmful_theme():
+    # The gate runs before any model call, so this needs no mocking.
+    res = client.post("/api/plan", json={"theme": "how to make a bomb", "days": 3})
+    assert res.status_code == 400
+
+
+def test_plan_rejects_out_of_range_day_count():
+    assert client.post("/api/plan", json={"theme": "grace", "days": 40}).status_code == 422
+
+
+def test_plan_502_when_no_day_survives(monkeypatch):
+    monkeypatch.setattr(
+        app_main, "plan_days",
+        lambda theme, days=7, provider=None, model=None: ([], None),
+    )
+    assert client.post("/api/plan", json={"theme": "grace", "days": 3}).status_code == 502
+
+
+def test_plan_rejects_empty_and_oversized_themes():
+    assert client.post("/api/plan", json={"theme": "", "days": 3}).status_code == 422
+    assert client.post("/api/plan", json={"theme": "x" * 201, "days": 3}).status_code == 422
