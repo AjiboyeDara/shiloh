@@ -863,12 +863,7 @@
         </div>
       </div>
       <div class="composer-zone">
-        <div class="prompts">
-          <button class="prompt-btn" data-p="What does Romans 8 say about the Holy Spirit?">Romans 8 &amp; the Spirit</button>
-          <button class="prompt-btn" data-p="What does the Bible say about anxiety and worry?">Anxiety &amp; worry</button>
-          <button class="prompt-btn" data-p="Explain the parable of the prodigal son.">The prodigal son</button>
-          <button class="prompt-btn" data-p="What is the significance of the Beatitudes?">The Beatitudes</button>
-        </div>
+        <div class="prompts" id="prompts"></div>
         <form class="composer" id="composer">
           <textarea id="input" placeholder="Ask about a verse, chapter, or theme…" rows="1"></textarea>
           <button type="submit" id="sendBtn">Ask</button>
@@ -991,12 +986,62 @@ modelSelect.addEventListener('change', () => {
 
 loadModels();
 
-document.querySelectorAll('.prompt-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    input.value = btn.dataset.p;
-    composer.requestSubmit();
-  });
+// Suggested prompts: four drawn at random from the pool on each visit, so the
+// same four don't greet everyone forever.
+const PROMPT_POOL = [
+  ['Romans 8 & the Spirit', 'What does Romans 8 say about the Holy Spirit?'],
+  ['Anxiety & worry', 'What does the Bible say about anxiety and worry?'],
+  ['The prodigal son', 'Explain the parable of the prodigal son.'],
+  ['The Beatitudes', 'What is the significance of the Beatitudes?'],
+  ['Marriage & love', 'What does the Bible teach about marriage and loving your spouse?'],
+  ['Friendship', 'What does the Bible say about choosing friends?'],
+  ['Forgiving someone', 'How does the Bible say to forgive someone who hurt you?'],
+  ['Lust & purity', 'What does the Bible say about lust and sexual purity?'],
+  ['Money & greed', 'What does the Bible teach about money and greed?'],
+  ['Generosity', 'What does the Bible say about giving to the poor?'],
+  ['Work & rest', 'What does the Bible say about hard work and rest?'],
+  ['Joy & happiness', 'Where does the Bible say lasting joy comes from?'],
+  ['Fear & courage', 'What does the Bible say when I am afraid?'],
+  ['Grief & loss', 'What comfort does the Bible offer in grief?'],
+  ['Anger', 'What does the Bible say about anger?'],
+  ['Pride & humility', 'What does the Bible teach about pride and humility?'],
+  ['Patience', 'What does the Bible say about patience?'],
+  ['How to pray', 'How does Jesus teach us to pray?'],
+  ['David & Goliath', 'Tell me the story of David and Goliath.'],
+  ['Walking on water', 'Tell me about Jesus walking on the water.'],
+  ['Noah & the flood', 'Tell me the story of Noah and the flood.'],
+  ['Daniel in the lions&rsquo; den', 'Tell me the story of Daniel in the lions’ den.'],
+  ['Jonah & the fish', 'Tell me the story of Jonah and the great fish.'],
+  ['Moses & the Red Sea', 'Tell me about Moses parting the Red Sea.'],
+  ['The good Samaritan', 'Explain the parable of the good Samaritan.'],
+  ['Feeding the 5,000', 'Tell me about Jesus feeding the five thousand.'],
+  ['Job&rsquo;s suffering', 'Why did God allow Job to suffer?'],
+  ['Creation in Genesis', 'What happens in the Genesis creation account?'],
+  ['The resurrection', 'What do the Gospels say about the resurrection of Jesus?'],
+  ['Psalm 23', 'What does Psalm 23 mean?'],
+];
+
+const promptsEl = document.getElementById('prompts');
+
+function renderPrompts() {
+  const pool = PROMPT_POOL.slice();
+  const picks = [];
+  while (picks.length < 4 && pool.length) {
+    picks.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+  }
+  promptsEl.innerHTML = picks
+    .map(([label, q]) => `<button class="prompt-btn" data-p="${q.replace(/"/g, '&quot;')}">${label}</button>`)
+    .join('');
+}
+
+promptsEl.addEventListener('click', e => {
+  const btn = e.target.closest('.prompt-btn');
+  if (!btn) return;
+  input.value = btn.dataset.p;
+  composer.requestSubmit();
 });
+
+renderPrompts();
 
 input.addEventListener('input', () => {
   input.style.height = 'auto';
