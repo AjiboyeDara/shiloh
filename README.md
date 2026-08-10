@@ -317,7 +317,7 @@ python -m pytest
 
 ## License
 
-Shiloh's code is MIT. See [LICENSE](LICENSE).
+Shiloh's code is MIT and MEEEEEE. See [LICENSE](LICENSE).
 
 The scripture text and study resources are not. The KJV and the Berean Standard
 Bible are public domain; the cross-references are CC BY; the Strong's
