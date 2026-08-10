@@ -1,10 +1,22 @@
 services:
-  bible-study-ai:
+  shiloh:
     build: .
     ports:
       - "8000:8000"
     environment:
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      # Pick the provider in .env. The default (ollama) expects a model
+      # running on the host, so point OLLAMA_URL at the host from inside the
+      # container — plain localhost would resolve to the container itself.
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-llama3.2}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
       - CHAT_MODEL=${CHAT_MODEL:-claude-sonnet-4-5}
-    volumes:
-      - ./resources:/app/resources
+      # Optional hardening for a publicly exposed instance; see the README.
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      - CHAT_RATE_LIMIT=${CHAT_RATE_LIMIT:-0}
+      - APP_PASSWORD=${APP_PASSWORD:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

@@ -1,0 +1,27 @@
+# Keep secrets, local state, and multi-hundred-MB build output out of the
+# image. The Dockerfile does `COPY . .`, so anything not listed here ends up
+# in a layer — including .env if you have one.
+.env
+.env.*
+!.env.example
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Rebuilt inside the image by scripts/setup.py; copying it in would double
+# the image size for nothing.
+data/
+
+.git/
+.gitignore
+.github/
+.claude/
+.DS_Store
+
+node_modules/
+
+# Screenshots are for GitHub, not for the running app.
+docs/
