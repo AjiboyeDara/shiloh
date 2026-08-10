@@ -1,12 +1,18 @@
 __pycache__/
 *.pyc
-.env
-data/
-!data/.gitkeep
-venv/
-.venv/
 *.egg-info/
+.pytest_cache/
+
+.env
+.venv/
+venv/
+
+# Downloaded scripture + the generated vector index (~750 MB).
+# Rebuild with: python scripts/setup.py
+data/
+
+# Local agent/editor config, not part of the project.
+.claude/
+
 .DS_Store
 node_modules/
-
-.claude/settings.local.json

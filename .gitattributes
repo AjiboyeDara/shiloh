@@ -1,0 +1,4 @@
+# Bundled study data, not hand-written source. Keeps GitHub's language bar
+# reporting Python instead of JSON.
+resources/**/*.json linguist-generated=true
+scripts/golden_set.json linguist-generated=true
