@@ -147,7 +147,7 @@ async def _lifespan(app):
     yield
 
 
-app = FastAPI(title="Open Bible Study AI", lifespan=_lifespan)
+app = FastAPI(title="Shiloh", lifespan=_lifespan)
 
 # Optional password gate for public hosting: when APP_PASSWORD is set,
 # everything but /health requires HTTP Basic auth (any username). The
@@ -203,7 +203,7 @@ def chat_app():
     index_path = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    return {"status": "ok", "message": "Bible Study AI API is running."}
+    return {"status": "ok", "message": "Shiloh API is running."}
 
 
 @app.get("/health")

@@ -31,9 +31,11 @@ def test_health():
 
 
 def test_root_serves_landing():
+    # Structural, not brand copy — renaming the app shouldn't turn CI red.
     res = client.get("/")
     assert res.status_code == 200
-    assert "Enter Shiloh" in res.text
+    assert "<html" in res.text.lower()
+    assert '/app' in res.text  # the landing page's way into the chat UI
 
 
 def test_app_serves_chat():

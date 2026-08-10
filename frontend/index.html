@@ -1183,6 +1183,19 @@ syncBars();
 const modelPicker = document.getElementById('modelPicker');
 const modelSelect = document.getElementById('modelSelect');
 
+// Every other key is `shiloh-`-prefixed; this one predates the name. Carry
+// the old value over once so an existing reader keeps their chosen model.
+const MODEL_KEY = 'shiloh-model';
+(function migrateModelKey() {
+  const legacy = localStorage.getItem('bible-study-model');
+  if (legacy && !localStorage.getItem(MODEL_KEY)) {
+    try {
+      localStorage.setItem(MODEL_KEY, legacy);
+      localStorage.removeItem('bible-study-model');
+    } catch (e) { /* storage full; the picker just falls back to the default */ }
+  }
+})();
+
 function selectedModel() {
   const v = modelSelect.value;
   if (!v) return {};
@@ -1208,7 +1221,7 @@ async function loadModels() {
       modelSelect.appendChild(group);
     }
 
-    const saved = localStorage.getItem('bible-study-model');
+    const saved = localStorage.getItem(MODEL_KEY);
     const def = data.providers.find(p => p.id === data.default_provider) || data.providers[0];
     const fallback = `${def.id}|${def.default_model}`;
     modelSelect.value = (saved && [...modelSelect.options].some(o => o.value === saved)) ? saved : fallback;
@@ -1217,7 +1230,7 @@ async function loadModels() {
 }
 
 modelSelect.addEventListener('change', () => {
-  localStorage.setItem('bible-study-model', modelSelect.value);
+  localStorage.setItem(MODEL_KEY, modelSelect.value);
 });
 
 loadModels();
