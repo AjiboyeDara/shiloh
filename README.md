@@ -1,256 +1,326 @@
-# Open Bible Study AI
+# Shiloh
 
-An open-source, self-hostable AI chat assistant for Bible study. It answers
-questions by retrieving relevant King James Version passages first (RAG),
-then generating a grounded answer, with the source passages always shown
-alongside the response so you can check the text yourself.
+An open-source Bible study assistant that reads the text before it answers you.
+
+![Shiloh answering a question, with the passages it used shown alongside](docs/img/chat.png)
+
+---
+
+## What this is
+
+Most AI chatbots will happily talk about the Bible from memory. They also invent
+verses, misquote real ones, and give you no way to check. That's a bad tool for
+studying scripture.
+
+Shiloh works the other way around. Ask a question and it **searches the actual
+text first**, pulls the passages that bear on it, and answers only from those —
+showing you every verse it used, numbered to match the citations in its reply.
+Then it goes back over its own answer and checks each quotation word-for-word
+against the KJV. Verbatim quotes get a checkmark. Paraphrases get flagged with
+the real wording. Invented ones get called out.
+
+**It runs entirely on your machine.** The default setup uses a free local model
+through [Ollama](https://ollama.com) — no account, no API key, no bill, and no
+question or passage leaving your computer. Plug in Gemini or Claude instead if
+you want stronger answers.
+
+**And it's built to be taken apart.** Shiloh is one small FastAPI backend and one
+HTML file. Change the translation, the commentary, the assistant's voice, the
+colours, the safety rules. [Make it yours](#make-it-yours) is a real section
+below, not a gesture — this is a tool for studying scripture, and people study
+scripture differently.
+
+---
+
+## Get it running
+
+You need **Python 3.10+** and about **750 MB of free disk** for the scripture
+text and search index.
+
+```bash
+git clone https://github.com/AjiboyeDara/shiloh.git
+cd shiloh
+
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+
+# Free local model — install Ollama from https://ollama.com first
+ollama pull llama3.2
+ollama serve &
+
+python scripts/setup.py       # downloads scripture, builds the search index
+uvicorn app.main:app --reload
+```
+
+Open **http://localhost:8000** and click **Enter Shiloh** (or go straight to
+`/app`).
+
+A few honest notes on that setup step: it downloads ~13 MB of scripture, then
+embeds about 21,000 passages on your CPU, which takes **10-20 minutes** on a
+typical laptop. It's safe to re-run — finished steps are skipped. The first
+question you ask takes a few extra seconds while the search model loads.
+
+**Want better answers?** Small local models are the weak link — they drop
+citations and paraphrase where they should quote. A free
+[Gemini API key](https://aistudio.google.com/) in your `.env` makes a large
+difference, and you can switch models per question from the picker in the header.
+
+### With Docker instead
+
+```bash
+cp .env.example .env      # set LLM_PROVIDER and the matching API key
+docker compose up --build
+```
+
+The image builds the search index at build time, so the first start is slow but
+every start after that is instant. If you leave `LLM_PROVIDER=ollama`, Ollama
+needs to be running on your host machine — the compose file already points the
+container at it.
+
+---
+
+## Using it
+
+**Ask anything about scripture.** A passage, a theme, a character, a question
+you've been sitting with. Every answer is built from verses Shiloh actually
+retrieved, and those verses sit beside the reply, numbered to match its `[n]`
+citations. Hover a citation to light up the passage it came from.
+
+**Every quote is checked.** After the model writes its answer, Shiloh compares
+each quoted span against the KJV word-for-word. You'll see a ✓ on quotes that
+match, and a warning with the real wording on quotes that don't.
+
+**Click any word for the original language.** Tap a word in a passage to see the
+Hebrew or Greek behind it — the lemma, transliteration, definition, how the KJV
+renders it elsewhere, and a concordance of everywhere it appears.
+
+<img src="docs/img/word-study.png" width="480" alt="Word study panel showing the Greek behind a word">
+
+**Follow the thread.** Each passage carries "See also" cross-references you can
+open inline, and each answer ends with a couple of *Go deeper* chips that connect
+what you just read to a related passage.
+
+**Reading plans.** Give Shiloh a theme and a number of days and it builds a plan
+— each day a subtopic with real passages attached. Tap a day to study it; it
+marks itself done.
+
+![Reading plan chips above the composer](docs/img/reading-plan.png)
+
+**Save verses you want to keep.** Star any passage and it lands in the Saved tab,
+where it stays independent of any conversation.
+
+<img src="docs/img/saved.png" width="480" alt="The Saved tab holding starred passages">
+
+**Your study stays yours.** Conversations are saved in your browser, with search,
+rename, and Markdown export. There's also a JSON backup of everything —
+conversations, saved verses, and your reading plan — that imports back by merging,
+so you never overwrite what's already there.
+
+Light and dark themes, and it works on a phone.
+
+---
+
+## Make it yours
+
+Shiloh has no build step. No bundler, no `package.json`, no compile. The frontend
+is one HTML file — edit it and refresh. Here's where to change things.
+
+### The assistant's voice
+
+`app/rag.py`, the `SYSTEM_PROMPT` near the top. It's split into four labelled
+blocks so you can edit one without disturbing the others:
+
+- **Voice** — tone, warmth, how it opens and closes. Change this first.
+- **Rigor** — citation rules and the instruction to quote exactly. It also holds
+  the line about flagging doctrinally contested questions rather than picking a
+  side. **If you're building this for a particular tradition, that's the line to
+  edit.**
+- **Citation example** — a worked `[1]`/`[2]` example. Keep it. Small models drop
+  citations entirely without it.
+- **Scope and safety** — what Shiloh will and won't discuss.
+
+`REFUSAL_MESSAGE` and `CRISIS_MESSAGE` are just below. **`CRISIS_MESSAGE`
+contains a US crisis line (988) — if you're outside the US, change that first.**
+
+### A different translation
+
+`scripts/download_bible.py`. Point `RAW_URL` at a JSON source for the translation
+you want and adjust `normalize()` if its shape differs. Everything downstream
+only needs a flat list of `{book, chapter, verse, text}`. The `BOOK_NAMES` list
+must match your source's book order.
+
+> Use a public-domain translation — ASV, WEB, Douay-Rheims, and others are fine.
+> Don't ship a copyrighted modern translation (NIV, ESV, NLT) without a licence
+> from its publisher.
+
+### Your own commentary
+
+Drop JSON files into `resources/commentary/` named after the book:
+
+| Path | Format |
+|---|---|
+| `resources/commentary/<Book>.json` | `{"1": "notes on chapter 1", "2": "...", ...}` |
+
+That's the whole integration. No registration step — when a retrieved passage's
+chapter has notes, they go into the model's context automatically. Matthew
+Henry's commentary ships by default; swap it for your own tradition's.
+
+### Another AI provider
+
+Each provider is two functions in `app/rag.py`: a blocking `_generate_X` and a
+streaming `_stream_X`. Add yours, wire it into the two dispatch chains in the
+same file, add its API key to `_check_provider_key` in `app/main.py`, and list it
+in `list_models()` so it shows up in the picker. Four files, and the existing
+Ollama, Gemini, and Anthropic implementations are each about fifteen lines to
+copy from.
+
+### How it searches
+
+- **The synonym map** in `app/retrieval.py` bridges modern words to the KJV's own
+  vocabulary — "anxiety" to "take no thought", "Holy Spirit" to "Holy Ghost".
+  It's a plain dict, and extending it is the single most effective retrieval
+  improvement measured so far.
+- **`EMBED_MODEL`** swaps the embedding model. Changing it means re-running
+  `python scripts/setup.py`, since the index and your queries have to use the
+  same model.
+- **`RERANK_MODEL`** adds an optional reranking pass.
+- **Chunking** — `CHUNK_SIZE` and `CHUNK_STRIDE` in `scripts/build_index.py`.
+
+Measure before and after with `python scripts/eval_retrieval.py`. See
+[docs/RETRIEVAL.md](docs/RETRIEVAL.md) for the current baseline and a log of what
+has already been tried and lost — worth reading before you spend a weekend on an
+idea that's already been measured.
+
+### The safety filter
+
+`app/rag.py` has a small pattern-based gate that catches genuinely harmful
+requests and messages that sound like someone in crisis, before they reach the
+model. It's a net for weak local models, not the main guardrail, and it's
+deliberately loose — the comments above it list every term left out on purpose
+and the real study question each one was falsely refusing ("how do I kill my
+sinful nature" is Romans 8, not violence). Read those before tightening it.
+
+### The look
+
+All the colours are CSS custom properties at the top of `frontend/index.html` —
+one block for light, one for dark. Change `--accent`, `--bg`, and `--ink` and
+you've rebranded most of the app. Known gap: `frontend/landing.html` doesn't use
+the variables yet and needs editing by hand.
+
+### The content
+
+Hardcoded lists in `frontend/index.html` you'll probably want to make your own:
+the starter prompt suggestions (`PROMPT_POOL`), the verse of the day rotation
+(`VOTD_REFS`), and the words that cycle while Shiloh is thinking
+(`THINKING_WORDS`).
+
+---
+
+## Hosting it for other people
+
+Four optional environment variables harden a public instance. Defaults keep local
+development frictionless.
+
+| Variable | What it does |
+|---|---|
+| `APP_PASSWORD` | Puts HTTP Basic auth in front of everything but `/health`. The simplest way to share an instance without sharing your API bill. **Serve over HTTPS** — Basic auth is plaintext otherwise. |
+| `CHAT_RATE_LIMIT` | Per-IP requests per minute on the chat, search, and plan endpoints. `10` is sane for a public instance; `0` (default) disables it. |
+| `TOOL_RATE_LIMIT` | Same, for word study. Defaults to 6× `CHAT_RATE_LIMIT`, since clicking words is how the panel is used. |
+| `CORS_ORIGINS` | Allowed browser origins. Defaults to `*`; set it to your domain. |
+
+Behind a reverse proxy, also set `TRUST_PROXY=1` so rate limits key on
+`X-Forwarded-For` rather than the proxy's own address.
+
+Every other setting is documented in [`.env.example`](.env.example).
+
+---
 
 ## How it works
 
 ```
-question ──▶ embed query ──▶ search local vector index ──▶ top passages
-                                                                 │
-                                                                 ▼
-                                          passages + question ──▶ LLM ──▶ answer
+question ──▶ search the KJV text ──▶ the passages that matter
+                                            │
+                                            ▼
+                       passages + question ──▶ AI ──▶ answer ──▶ quotes checked
 ```
 
-- **Bible text**: King James Version (public domain), sourced from a plain
-  JSON mirror and normalized into `book/chapter/verse` records.
-- **Retrieval**: hybrid. Verses are grouped into overlapping 5-verse
-  windows, embedded locally with `sentence-transformers`
-  (`all-MiniLM-L6-v2`, runs on CPU, no API key needed), and stored in a
-  local Chroma vector index; a BM25 lexical index over the same chunks is
-  fused in with reciprocal-rank fusion so exact KJV wording still matches.
-  To close the archaic-vocabulary gap ("anxiety" vs "take no thought"),
-  the Berean Standard Bible (public domain, modern English) is indexed in
-  parallel as a retrieval-only mirror — search runs over both, the app
-  always displays KJV. Fused results carry a light per-chapter diversity
-  cap so thematic questions span the canon. Scripture references written
-  in the question ("Romans 8", "John 3:16") are parsed out and always
-  included first, and a small synonym map bridges the most common
-  remaining gaps ("Holy Spirit" → "Holy Ghost"). No Bible text ever
-  leaves your machine during retrieval. Retrieval quality is measured by
-  a golden-set eval (`scripts/eval_retrieval.py`) — run it before and
-  after any retrieval change.
-- **Generation**: retrieved passages + your question go to an LLM to produce
-  the answer, streamed token by token to the UI (`/api/chat/stream`), with
-  numbered `[n]` citations that link back to the retrieved passages.
-  Providers are selected via `LLM_PROVIDER` in `.env`: a free local model
-  via [Ollama](https://ollama.com) (the default, with no API key so nothing
-  leaves your machine), Google Gemini, or the Anthropic API. The generation
-  calls are isolated in `app/rag.py` so adding another provider is easy.
-- **Quote verification**: every scripture quotation in an answer is
-  checked word-for-word against the KJV (`app/verify.py`). Verbatim quotes
-  are marked verified with their verse reference; near-quotes are flagged
-  with the real wording; inventions are called out. Verse mentions in
-  answers ("v. 26") are clickable and open the chapter at that verse.
-- **Word study**: click any word in a retrieved passage to see the Strong's
-  entries behind it (original Hebrew/Greek, transliteration, definition,
-  how the KJV renders it) plus a concordance of everywhere it occurs. With
-  the Strong's-tagged KJV fetched (`scripts/fetch_strongs_kjv.py`), the
-  entry shown is the exact word tagged at that verse, not a candidate list.
-- **Reading plans**: give a theme and a number of days (`/api/plan`) and one
-  model call returns the day subtopics — no verse references, and any the
-  model emits anyway are stripped by regex before use. Each day's passages
-  then come from the same hybrid retrieval the chat uses, so a plan can't
-  cite a verse that doesn't exist. Days appear as chips above the composer;
-  tapping one asks it as a normal question and marks it done.
-- **Saved verses**: star any retrieved passage to keep it in the "Saved" tab
-  of the passages pane. Kept in the browser, independent of conversations.
-- **Backup**: the conversations menu exports the active conversation as
-  Markdown, or everything — conversations, saved verses, reading plan — as a
-  JSON backup that imports back by merging, never overwriting.
-- **Extras**: cross-references, Strong's dictionaries, the tagged KJV, and
-  Matthew Henry's chapter commentary are all fetched by `scripts/setup.py`
-  out of the box; commentary is fed into the model's context whenever a
-  retrieved passage's chapter has notes.
+**Search is hybrid.** Verses are grouped into overlapping five-verse windows and
+indexed two ways: semantically, with a local embedding model
+(`all-MiniLM-L6-v2`, CPU, no API key), and lexically with BM25 so exact KJV
+phrasing still matches. The two result sets are fused with reciprocal-rank
+fusion.
 
-## Quickstart (local)
+Because modern questions and 1611 English don't share vocabulary, the Berean
+Standard Bible is indexed alongside as a **search-only mirror** — Shiloh searches
+both and always shows you the KJV. A hand-written synonym map closes the
+remaining common gaps, and scripture references you write directly ("Romans 8",
+"John 3:16") are parsed out and always included.
 
-```bash
-git clone <this-repo>
-cd bible-study-ai
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+**No scripture leaves your machine during search.** Embedding and ranking are
+entirely local. Only the retrieved passages and your question go to the AI model,
+and with Ollama even that stays on your computer.
 
-cp .env.example .env
-# Default is a free local model via Ollama: install it from https://ollama.com
-# (or `brew install ollama`), start it (`ollama serve`), then:
-ollama pull llama3.2
-# To use Claude instead, set LLM_PROVIDER=anthropic and ANTHROPIC_API_KEY in .env.
+**Answers are checked, not trusted.** `app/verify.py` compares every quoted span
+against the KJV word-for-word after generation.
 
-# One command: fetches the KJV + BSB texts, cross-references, Strong's
-# dictionaries, the Strong's-tagged KJV, and Matthew Henry's commentary,
-# then builds the local embedding indexes (a few minutes).
-python scripts/setup.py
+Retrieval quality is measured, not guessed — see
+[docs/RETRIEVAL.md](docs/RETRIEVAL.md).
 
-uvicorn app.main:app --reload
-```
+One thing worth knowing: the web pages load fonts from Google Fonts, which is the
+only third-party request the frontend makes. Self-host them from `frontend/` if
+you want it fully offline.
 
-Open http://localhost:8000 to use the chat UI, which is served directly by the API.
-
-## Quickstart (Docker)
-
-```bash
-cp .env.example .env   # add your ANTHROPIC_API_KEY
-docker compose up --build
-```
-
-The image downloads the Bible text and builds the index at build time, so
-the container is ready to serve as soon as it starts.
-
-## Cross-references
-
-Verse cross-references (openbible.info's dataset, derived from the
-public-domain Treasury of Scripture Knowledge, CC-BY) are fetched and
-converted with one command:
-
-```bash
-python scripts/fetch_cross_references.py
-```
-
-After that, every retrieved passage in the UI shows "See also" chips that
-open the referenced chapter inline.
-
-## Adding commentary
-
-Matthew Henry's commentary (public domain) is fetched by `scripts/setup.py`
-(or directly via `scripts/fetch_commentary.py`) from the free-use
-[HelloAO Bible API](https://bible.helloao.org). Each chapter's overview is
-stored locally and fed into the model's context whenever a retrieved
-passage's chapter has notes.
-
-To use a different commentary, drop in files with the same shape and the
-app picks them up automatically:
-
-| Resource | Path | Format |
-|---|---|---|
-| Commentary | `resources/commentary/<Book>.json` | `{"1": "commentary for chapter 1", "2": "...", ...}` |
-
-Strong's dictionaries are already fetched by `scripts/setup.py` (or
-directly via `scripts/fetch_strongs.py`) from
-[OpenScriptures](https://github.com/openscriptures/strongs) (CC-BY-SA) and
-power the click-a-word study panel. The Strong's-tagged KJV
-(`scripts/fetch_strongs_kjv.py`, public-domain data) upgrades that panel
-from candidate entries to the exact tagged word per verse.
+---
 
 ## Project structure
 
 ```
 app/
-  main.py         FastAPI app + routes (/api/chat, /api/chat/stream, /api/search, /api/plan, /api/chapter, /api/word-study)
-  rag.py          Prompting + LLM calls (blocking + streaming)
+  main.py         FastAPI routes
+  rag.py          Prompting, the AI calls, the safety gate
   retrieval.py    Hybrid search, reference parsing, resource lookups
-  verify.py       Word-for-word quote verification against the KJV
-  word_study.py   Strong's lookups + concordance for a KJV word
+  verify.py       Word-for-word quote checking against the KJV
+  word_study.py   Strong's lookups and concordance
   models.py       Request/response schemas
 scripts/
-  setup.py                   One-command setup (runs everything below)
-  download_bible.py          Fetches + normalizes the KJV and BSB texts
-  build_index.py             Chunks, embeds, and indexes both translations
-  fetch_cross_references.py  Fetches + converts cross-reference data
-  fetch_strongs.py           Fetches + merges the Strong's dictionaries
-  eval_retrieval.py          Golden-set retrieval eval (recall@k, hit@k)
-  golden_set.json            ~30 thematic questions with expected passages
+  setup.py                One command; runs everything below
+  download_bible.py       Fetches and normalizes the KJV and BSB
+  build_index.py          Chunks, embeds, and indexes both
+  fetch_*.py              Cross-references, Strong's, commentary
+  eval_retrieval.py       Golden-set search eval
+  eval_answers.py         End-to-end answer eval
+  golden_set.json         66 questions with the passages a good tool should find
 frontend/
-  index.html      Single-file chat UI (no build step)
-tests/            pytest suite (retrieval, chunking, verification, API)
-resources/        Cross-refs + Strong's + optional commentary
-data/             Generated at setup time (gitignored)
+  index.html      The whole chat UI, no build step
+  landing.html    Landing page
+resources/        Cross-references, Strong's, commentary (see NOTICE)
+tests/            pytest suite
+docs/             Retrieval baselines and screenshots
 ```
 
-Run the tests with `python -m pytest`.
+API endpoints: `/api/chat`, `/api/chat/stream`, `/api/search`, `/api/plan`,
+`/api/chapter`, `/api/passage-text`, `/api/word-study`, `/api/models`.
+Interactive docs at `/docs` when the server is running.
 
-## Swapping the LLM
+---
 
-Set `LLM_PROVIDER` in `.env` to `ollama` (default; free local model, configure
-with `OLLAMA_MODEL`/`OLLAMA_URL`) or `anthropic` (requires `ANTHROPIC_API_KEY`,
-configure the model with `CHAT_MODEL`). Each provider is a single small
-function in `app/rag.py` (`_generate_ollama` / `_generate_anthropic`), so
-adding another is a few lines, since the retrieval and prompt-building logic is
-provider-agnostic.
+## Contributing
 
-## Swapping the translation
+Bug reports, translations, commentary sources, and provider integrations are all
+welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for how to run the tests and the
+evals.
 
-The default is KJV because it's unambiguously public domain. To use a
-different public-domain translation (ASV, WEB, Douay-Rheims, etc.), point
-`RAW_URL` in `scripts/download_bible.py` at a JSON source for that
-translation and adjust `normalize()` if the shape differs. Do **not** use a
-copyrighted modern translation (NIV, ESV, NLT, etc.) without a license from
-its publisher.
-
-## Self-hosting
-
-Two env vars harden a publicly exposed instance (both optional; defaults
-keep localhost development frictionless):
-
-- `CORS_ORIGINS` — comma-separated list of allowed browser origins
-  (default `*`). Set it to your site, e.g.
-  `CORS_ORIGINS=https://bible.example.com`.
-- `CHAT_RATE_LIMIT` — per-IP requests per minute on the two chat endpoints
-  and `/api/search` (which runs the embedding model on every call; default
-  `0` = disabled). `CHAT_RATE_LIMIT=10` is a sane public setting; over the
-  limit returns HTTP 429. If the app sits behind a reverse proxy, also set
-  `TRUST_PROXY=1` so the limit keys on `X-Forwarded-For` instead of the
-  proxy's own address.
-- `TOOL_RATE_LIMIT` — per-IP requests per minute on `/api/word-study`,
-  which scans the whole KJV. Defaults to 6× `CHAT_RATE_LIMIT`, since
-  clicking words is how the panel is used and it shouldn't spend the chat
-  budget. Also disabled whenever `CHAT_RATE_LIMIT` is.
-- `APP_PASSWORD` — when set, the whole app (everything but `/health`)
-  requires HTTP Basic auth with this password (any username). The browser
-  prompts once and remembers; use it to share an instance without sharing
-  your LLM bill. Serve over HTTPS — Basic auth is plaintext otherwise.
-
-## Roadmap ideas
-
-- Multi-translation comparison view (per-passage KJV/BSB toggle exists;
-  side-by-side is the next step)
-- A stronger embedding model, measured with `scripts/eval_retrieval.py`.
-  `EMBED_MODEL` and an optional cross-encoder rerank stage (`RERANK_MODEL`)
-  are env-configurable to make experiments cheap. Tried so far (2026-07),
-  all at or below the `all-MiniLM-L6-v2` + RRF baseline on the golden set:
-  `bge-small-en-v1.5` (with and without query prefix; re-tested against the
-  expanded 58-question set and larger synonym map — still lost, recall@6
-  0.655 vs 0.665, hit@6 0.931 vs 0.966), reranking with
-  `ms-marco-MiniLM-L-6-v2` and `bge-reranker-base` — modern-English models
-  seem to misjudge KJV text, so a candidate should likely be fine-tuned or
-  chosen for archaic English
-
-### Retrieval baseline and experiment log
-
-Current baseline on the 66-question golden set (`all-MiniLM-L6-v2` + BM25
-with RRF, synonym-map query expansion, `top_k=6`):
-
+```bash
+python -m pytest
 ```
-recall@6:    0.780
-hit@6:       0.985   (65/66 questions)
-chapters@6:  4.89 distinct per result set
-```
-
-**LLM query rewriting lost (2026-07).** The synonym map only covers gaps
-someone thought to add, so asking the model for the KJV's own wording ought
-to generalize better. It doesn't — `QUERY_REWRITE=1` (off by default, with
-`REWRITE_PROVIDER` / `REWRITE_MODEL` to pick the rewriting model) measured:
-
-| Variant | recall@6 | hit@6 |
-|---|---|---|
-| Baseline (synonym map only) | **0.780** | **0.985** |
-| Rewrite replaces the map — `llama3.2` | 0.492 | 0.742 |
-| Rewrite replaces the map — `gemini-2.5-flash-lite` | 0.525 | 0.727 |
-| Map **+** rewrite (additive) — `gemini-2.5-flash-lite` | 0.703 | 0.924 |
-
-Two things showed up. A small local model invents archaic-*sounding* prose
-rather than recalling actual KJV phrases ("what afflictions of the mind are
-to be borne with patience" for anxiety, where the KJV says "take no
-thought"), which poisons both retrievers. Gemini does produce real KJV
-wording ("Go ye therefore, teach all nations"), and additive expansion
-recovers most of the gap — but generated terms still dilute BM25 and pull
-the query embedding off the curated centroid. The flag stays off; the code
-path is kept and tested so the experiment is cheap to repeat with a better
-prompt or a KJV-tuned model.
 
 ## License
 
-Code: MIT (see `LICENSE`). The KJV Bible text is public domain. Any
-additional resources you add carry whatever license their source specifies.
+Shiloh's code is MIT — see [LICENSE](LICENSE).
+
+The scripture text and study resources are not. The KJV and the Berean Standard
+Bible are public domain; the cross-references are CC BY; the Strong's
+dictionaries are **CC BY-SA**, which carries obligations if you redistribute
+them. Every source, with its licence, is listed in [NOTICE](NOTICE) — read it
+before you fork.
