@@ -1,0 +1,85 @@
+# Third-party data used by Shiloh
+
+Shiloh's own source code is MIT licensed (see LICENSE). The scripture text and
+study resources it uses are not Shiloh's work. Each is listed below with its
+source and licence. Some are redistributed in this repository under
+`resources/`; the rest are downloaded by `scripts/setup.py` into `data/`, which
+is not tracked in git.
+
+If you fork this project, these terms travel with the data — in particular the
+CC BY-SA entry, which requires that you keep the attribution and license
+derivatives of that data under the same terms.
+
+---
+
+## Redistributed in this repository (`resources/`)
+
+### Cross-references — CC BY 4.0
+`resources/cross_references/cross_references.json`
+
+Derived from the OpenBible.info cross-reference dataset, itself derived from
+the public-domain Treasury of Scripture Knowledge.
+
+- Source: https://www.openbible.info/labs/cross-references/
+- Licence: Creative Commons Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/
+- Refresh with: `python scripts/fetch_cross_references.py`
+
+### Strong's Hebrew and Greek dictionaries — CC BY-SA 4.0
+`resources/strongs/strongs.json`
+
+From the OpenScriptures Strong's dictionaries.
+
+- Source: https://github.com/openscriptures/strongs
+- Licence: Creative Commons Attribution-ShareAlike 4.0 — https://creativecommons.org/licenses/by-sa/4.0/
+- Refresh with: `python scripts/fetch_strongs.py`
+
+**ShareAlike applies to this file.** Redistributing it, or a modified version
+of it, means keeping this attribution and licensing that data under CC BY-SA.
+It does not change the MIT licence covering Shiloh's own code.
+
+### Strong's-tagged KJV — public domain
+`resources/strongs/kjv_tagged.json`
+
+- Source: https://github.com/1John419/kjs
+- Licence: public domain (the KJV text and Strong's numbering are both out of copyright)
+- Refresh with: `python scripts/fetch_strongs_kjv.py`
+
+### Matthew Henry's Commentary — public domain
+`resources/commentary/*.json`
+
+Matthew Henry's *Exposition of the Old and New Testaments* (1706-1721), chapter
+overviews, retrieved through the HelloAO Bible API.
+
+- Source: https://bible.helloao.org
+- Licence: public domain
+- Refresh with: `python scripts/fetch_commentary.py`
+
+---
+
+## Downloaded at setup time (`data/`, not tracked)
+
+### King James Version — public domain
+- Source: https://github.com/thiagobodruk/bible
+- Licence: public domain
+
+### Berean Standard Bible — public domain
+Indexed as a modern-English search mirror only; Shiloh always displays the KJV
+unless you ask for BSB on a specific passage.
+
+- Source: https://github.com/scrollmapper/bible_databases
+- Licence: public domain (the BSB is released into the public domain by its publisher)
+
+---
+
+## Fonts
+
+The web UI loads Cardo, Hanken Grotesk, Inter, and Spectral from Google Fonts
+at page load. This is the one network request the frontend makes to a third
+party. Self-host them from `frontend/` if you want the app to be fully offline.
+
+---
+
+## Project media
+
+`media/` contains original artwork created for this project and is covered by
+the MIT licence along with the rest of the repository.
