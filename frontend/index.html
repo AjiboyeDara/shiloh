@@ -581,18 +581,6 @@
     transform: translateY(-1px);
     box-shadow: inset 0 1px 0 var(--glass-highlight), 0 4px 14px -6px rgba(0, 0, 0, 0.25);
   }
-  /* Reading-plan chips reuse .prompt-btn; only the plan-specific bits here. */
-  .plan-label {
-    align-self: center;
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--ink-faint);
-    margin-right: 2px;
-  }
-  .plan-day.done { opacity: 0.5; text-decoration: line-through; }
-  .plan-clear { padding: 9px 12px; color: var(--ink-faint); }
   .composer {
     display: flex;
     gap: 12px;
@@ -672,6 +660,123 @@
   }
   .sheet-tab:hover { color: var(--ink-soft); }
   .sheet-tab.on { color: var(--ink-soft); border-bottom-color: var(--accent); }
+
+  /* Reading plans: one <details> per plan, so open/closed is the browser's
+     problem, not ours. */
+  .plan-card {
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    border-radius: 4px;
+    margin-bottom: 12px;
+    box-shadow: inset 0 1px 0 var(--glass-highlight);
+  }
+  .plan-card > summary {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 15px;
+    cursor: pointer;
+    list-style: none;
+  }
+  .plan-card > summary::-webkit-details-marker { display: none; }
+  .plan-chev {
+    font-size: 9px;
+    color: var(--ink-faint);
+    transition: transform 0.2s ease;
+  }
+  .plan-card[open] .plan-chev { transform: rotate(180deg); }
+  .plan-theme {
+    flex: 1;
+    min-width: 0;
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .plan-count {
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+  }
+  .plan-del {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+  .plan-del:hover { color: var(--ink); }
+  .plan-bar { height: 2px; background: var(--rule); }
+  .plan-progress {
+    height: 100%;
+    background: var(--accent-bright);
+    transition: width 0.25s ease;
+  }
+  .plan-days { padding: 6px 0 10px; }
+  .plan-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 7px 15px;
+  }
+  .plan-row input[type="checkbox"] {
+    margin: 3px 0 0;
+    width: 14px; height: 14px;
+    accent-color: var(--accent-bright);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .plan-ask {
+    flex: 1;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .plan-ask:hover { color: var(--accent-bright); }
+  .plan-num {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-right: 6px;
+  }
+  /* Strike the title only — line-through on the button would drag the
+     references through with it, since descendants can't opt back out. */
+  .plan-row.done .plan-ask { opacity: 0.5; }
+  .plan-row.done .plan-title { text-decoration: line-through; }
+  .plan-refs {
+    display: block;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .plan-new {
+    width: 100%;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink-soft);
+    background: var(--glass-bg);
+    border: 1px dashed var(--chip-border);
+    border-radius: 4px;
+    padding: 11px;
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .plan-new:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+  .plan-new:disabled { opacity: 0.5; cursor: default; }
   .passage-card {
     border: 1px solid var(--glass-border);
     background: var(--glass-bg);
@@ -976,6 +1081,8 @@
     padding-top: 34vh;
     color: var(--ink-faint);
   }
+  /* The plans tab keeps a "new plan" button below the empty state. */
+  .passages .placeholder.plan-empty { padding: 6vh 0 20px; }
   .passages .placeholder .num-box {
     width: 44px; height: 44px;
     margin: 0 auto 20px;
@@ -1107,6 +1214,7 @@
         <div class="sheet-tabs" role="tablist">
           <button type="button" class="sheet-tab on" id="tabRetrieved">Retrieved</button>
           <button type="button" class="sheet-tab" id="tabSaved">Saved</button>
+          <button type="button" class="sheet-tab" id="tabPlans">Plans</button>
         </div>
         <button class="sheet-close" id="sheetClose" aria-label="Close passages">&#10005;</button>
       </div>
@@ -1132,6 +1240,7 @@ const sheetFab = document.getElementById('sheetFab');
 const sheetClose = document.getElementById('sheetClose');
 const tabRetrieved = document.getElementById('tabRetrieved');
 const tabSaved = document.getElementById('tabSaved');
+const tabPlans = document.getElementById('tabPlans');
 
 // Snapshots for restoring the initial UI after "New conversation".
 const EMPTY_STATE_HTML = messagesEl.innerHTML;
@@ -1292,43 +1401,106 @@ function ask(text) {
   composer.requestSubmit();
 }
 
-// --- Reading plan ---
-// A plan is a prompt source, not a container: its own key, so tapping day 3
-// drops that answer into whatever conversation is open, and none of the
-// conversation code has to know plans exist. One plan at a time.
-const PLAN_KEY = 'shiloh-plan';
-let plan = loadPlan();
+// --- Reading plans ---
+// Plans live in the passages pane, not the composer: they outlive the
+// conversation, so a new chat leaves them standing. Tapping a day still just
+// asks a question into whatever conversation is open — none of the
+// conversation code has to know plans exist.
+const PLANS_KEY = 'shiloh-plans';
+const PLANS_MAX = 5;
+let plans = loadPlans();
 
-function loadPlan() {
+function loadPlans() {
   try {
-    const v = JSON.parse(localStorage.getItem(PLAN_KEY));
-    return v && Array.isArray(v.days) && v.days.length ? v : null;
-  } catch (e) { return null; }
+    const v = JSON.parse(localStorage.getItem(PLANS_KEY));
+    if (Array.isArray(v)) return v.filter(p => p && Array.isArray(p.days) && p.days.length);
+  } catch (e) { /* fall through to the single-plan migration */ }
+  // Readers from before this tab kept exactly one plan, under its own key.
+  try {
+    const old = JSON.parse(localStorage.getItem('shiloh-plan'));
+    if (old && Array.isArray(old.days) && old.days.length) {
+      const migrated = [{ ...old, id: newConvId() }];
+      localStorage.setItem(PLANS_KEY, JSON.stringify(migrated));
+      localStorage.removeItem('shiloh-plan');
+      return migrated;
+    }
+  } catch (e) { /* nothing to migrate */ }
+  return [];
 }
-function savePlan() {
-  try {
-    if (plan) localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
-    else localStorage.removeItem(PLAN_KEY);
-  } catch (e) { /* plan is small; if this fails the chips still work today */ }
+function savePlans() {
+  try { localStorage.setItem(PLANS_KEY, JSON.stringify(plans)); return true; }
+  catch (e) { return false; }
+}
+function syncPlansTab() {
+  tabPlans.textContent = plans.length ? `Plans · ${plans.length}` : 'Plans';
 }
 
-function renderPlanChips() {
-  if (!plan) { renderPrompts(); return; }
-  const chips = plan.days.map((d, i) => {
-    const q = `${plan.theme}: ${d.title}`;
-    return `<button class="prompt-btn plan-day${d.done ? ' done' : ''}" data-day="${i}"
-             data-p="${escapeAttr(q)}" title="${escapeAttr((d.refs || []).join(' · '))}">Day ${i + 1} &middot; ${escapeHtml(d.title)}</button>`;
-  }).join('');
-  promptsEl.innerHTML =
-    `<span class="plan-label">${escapeHtml(plan.theme)}</span>${chips}` +
-    `<button class="prompt-btn plan-clear" title="Clear this reading plan">&#10005;</button>`;
+function planCardHtml(p, i) {
+  const done = p.days.filter(d => d.done).length;
+  const rows = p.days.map((d, j) => `
+      <div class="plan-row${d.done ? ' done' : ''}">
+        <input type="checkbox" data-plan="${i}" data-day="${j}"${d.done ? ' checked' : ''}
+               aria-label="Mark day ${j + 1} done">
+        <button type="button" class="plan-ask" data-plan="${i}" data-day="${j}"
+                data-p="${escapeAttr(p.theme + ': ' + d.title)}">
+          <span class="plan-title"><span class="plan-num">Day ${j + 1}</span>${escapeHtml(d.title)}</span>
+          ${(d.refs || []).length ? `<span class="plan-refs">${escapeHtml(d.refs.join(' · '))}</span>` : ''}
+        </button>
+      </div>`).join('');
+  return `
+    <details class="plan-card" data-plan="${i}"${i === 0 ? ' open' : ''}>
+      <summary>
+        <span class="plan-chev">&#9660;</span>
+        <span class="plan-theme">${escapeHtml(p.theme)}</span>
+        <span class="plan-count">${done}/${p.days.length}</span>
+        <button type="button" class="plan-del" data-plan="${i}"
+                title="Delete this plan" aria-label="Delete this plan">&#10005;</button>
+      </summary>
+      <div class="plan-bar"><div class="plan-progress" style="width:${Math.round(done / p.days.length * 100)}%"></div></div>
+      <div class="plan-days">${rows}</div>
+    </details>`;
+}
+
+function renderPlans() {
+  setActiveTab('plans');
+  const full = plans.length >= PLANS_MAX;
+  passageList.innerHTML =
+    (plans.length
+      ? plans.map(planCardHtml).join('')
+      : '<div class="placeholder plan-empty"><div class="num-box">&#10003;</div>' +
+        '<p>Build a reading plan and its days stay here — checked off as you go, across every conversation.</p></div>')
+    + `<button type="button" class="plan-new" id="planNew"${full ? ' disabled' : ''}>${
+        full ? `Plan limit reached · ${PLANS_MAX} max` : '&#65291; New reading plan'}</button>`;
+  sheetFab.hidden = false;
+}
+
+// Checking a box re-renders nothing: a full re-render would slam every other
+// <details> back to its default open state mid-click.
+function setDayDone(pi, di, done) {
+  const p = plans[pi];
+  if (!p || !p.days[di]) return;
+  p.days[di].done = done;
+  savePlans();
+  const card = passageList.querySelector(`.plan-card[data-plan="${pi}"]`);
+  if (!card) return;
+  const row = card.querySelectorAll('.plan-row')[di];
+  row.classList.toggle('done', done);
+  row.querySelector('input').checked = done;
+  const n = p.days.filter(d => d.done).length;
+  card.querySelector('.plan-count').textContent = `${n}/${p.days.length}`;
+  card.querySelector('.plan-progress').style.width = Math.round(n / p.days.length * 100) + '%';
 }
 
 async function newPlan() {
+  if (plans.length >= PLANS_MAX) {
+    alert(`You can keep ${PLANS_MAX} reading plans. Delete one to build another.`);
+    return;
+  }
   const theme = prompt('Reading plan theme — a topic, a book, a question:');
   if (!theme || !theme.trim()) return;
   const days = Math.min(14, Math.max(1, parseInt(prompt('How many days? (1-14)', '7'), 10) || 7));
-  const btn = convMenu.querySelector('.conv-plan');
+  const btn = document.getElementById('planNew') || convMenu.querySelector('.conv-plan');
+  const label = btn && btn.innerHTML;
   if (btn) { btn.disabled = true; btn.textContent = 'Building plan…'; }
   try {
     const res = await fetch('/api/plan', {
@@ -1338,44 +1510,34 @@ async function newPlan() {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Could not build a plan.');
-    plan = {
-      version: 1, theme: data.theme, createdAt: Date.now(),
+    plans.unshift({
+      version: 1, id: newConvId(), theme: data.theme, createdAt: Date.now(),
       // Render what came back, never the number asked for: days whose
       // retrieval found nothing are dropped server-side.
       days: data.days.map(d => ({ title: d.title, refs: d.references, done: false })),
-    };
-    savePlan();
-    renderPlanChips();
+    });
+    if (!savePlans()) {
+      plans.shift();
+      throw new Error('Could not save the plan — browser storage is full.');
+    }
+    syncPlansTab();
+    renderPlans();
     closeConvMenu();
+    if (isMobile()) openSheet();
   } catch (err) {
     alert(err.message);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = 'New reading plan…'; }
+    // renderPlans() replaces the in-pane button; only revive it if it survived.
+    if (btn && btn.isConnected) { btn.disabled = false; btn.innerHTML = label; }
   }
 }
 
 promptsEl.addEventListener('click', e => {
-  if (e.target.closest('.plan-clear')) {
-    if (!confirm('Clear this reading plan?')) return;
-    plan = null;
-    savePlan();
-    renderPlanChips();
-    return;
-  }
-  const day = e.target.closest('.plan-day');
-  if (day) {
-    if (isSending) return;
-    ask(day.dataset.p);
-    plan.days[+day.dataset.day].done = true;
-    savePlan();
-    renderPlanChips();
-    return;
-  }
   const btn = e.target.closest('.prompt-btn');
   if (btn) ask(btn.dataset.p);
 });
 
-renderPlanChips();
+renderPrompts();
 
 input.addEventListener('input', () => {
   input.style.height = 'auto';
@@ -1523,6 +1685,7 @@ function setActiveTab(tab) {
   activeTab = tab;
   tabRetrieved.classList.toggle('on', tab === 'retrieved');
   tabSaved.classList.toggle('on', tab === 'saved');
+  tabPlans.classList.toggle('on', tab === 'plans');
 }
 function syncSavedTab() {
   tabSaved.textContent = saved.length ? `Saved · ${saved.length}` : 'Saved';
@@ -1567,10 +1730,37 @@ function renderSaved() {
 }
 
 tabSaved.addEventListener('click', renderSaved);
+tabPlans.addEventListener('click', renderPlans);
 tabRetrieved.addEventListener('click', () => {
   if (shownSet >= 0) { renderPassages(shownSet); return; }
   setActiveTab('retrieved');
   passageList.innerHTML = PLACEHOLDER_HTML;
+});
+
+// Plan controls live inside the passage list, so they delegate off it.
+passageList.addEventListener('click', e => {
+  const del = e.target.closest('.plan-del');
+  if (del) {
+    e.preventDefault();  // the click is inside a <summary>; don't also toggle it
+    if (!confirm('Delete this reading plan?')) return;
+    plans.splice(+del.dataset.plan, 1);
+    savePlans();
+    syncPlansTab();
+    renderPlans();
+    return;
+  }
+  if (e.target.closest('#planNew')) { newPlan(); return; }
+  const day = e.target.closest('.plan-ask');
+  if (day) {
+    if (isSending) return;
+    ask(day.dataset.p);
+    setDayDone(+day.dataset.plan, +day.dataset.day, true);
+    if (isMobile()) closeSheet();
+  }
+});
+passageList.addEventListener('change', e => {
+  const box = e.target.closest('.plan-row input[type="checkbox"]');
+  if (box) setDayDone(+box.dataset.plan, +box.dataset.day, box.checked);
 });
 
 // One passage card. `opts.n` is the citation number — passing it adds the
@@ -2321,7 +2511,7 @@ function resetUI() {
   setActiveTab('retrieved');
   // Keep the mobile FAB alive when there are saved verses — it's the only way
   // to reach the pane on a small screen.
-  sheetFab.hidden = !saved.length;
+  sheetFab.hidden = !saved.length && !plans.length;
   closeSheet();
   loadVerseOfTheDay();
 }
@@ -2393,7 +2583,7 @@ function renderConvMenu() {
     : '';
   convMenu.innerHTML = filter
     + (rows || '<div class="conv-empty">No saved conversations yet.</div>')
-    + `<button type="button" class="conv-title conv-plan">${plan ? 'Replace reading plan…' : 'New reading plan…'}</button>`
+    + `<button type="button" class="conv-title conv-plan">New reading plan…</button>`
     + `<button type="button" class="conv-title conv-export"${history.length ? '' : ' disabled'}>Export as Markdown</button>`
     + `<button type="button" class="conv-title conv-export-json">Export backup (JSON)</button>`
     + `<button type="button" class="conv-title conv-import">Import backup…</button>`;
@@ -2483,7 +2673,7 @@ function exportBackup() {
   const data = {
     app: 'shiloh', version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
-    conversations, saved, plan,
+    conversations, saved, plans,
   };
   download(new Blob([JSON.stringify(data)], { type: 'application/json' }),
            `shiloh-backup-${new Date().toISOString().slice(0, 10)}.json`);
@@ -2526,15 +2716,20 @@ function applyBackup(data) {
   const verses = (data.saved || []).filter(validVerse)
     .filter(v => !saved.some(s => s.reference === v.reference))
     .slice(0, Math.max(0, SAVED_MAX - saved.length));
-  const incomingPlan = (data.plan && Array.isArray(data.plan.days) && data.plan.days.length) ? data.plan : null;
-  const planSkipped = !!incomingPlan && !!plan;
+  // `data.plan` is the single-plan shape older backups were written with.
+  const validPlans = (Array.isArray(data.plans) ? data.plans : (data.plan ? [data.plan] : []))
+    .filter(p => p && Array.isArray(p.days) && p.days.length)
+    .filter(p => !plans.some(x => x.theme === p.theme));
+  const incomingPlans = validPlans.slice(0, Math.max(0, PLANS_MAX - plans.length));
+  const plansSkipped = validPlans.length - incomingPlans.length;
 
-  if (!convs.length && !verses.length && !(incomingPlan && !plan)) {
+  if (!convs.length && !verses.length && !incomingPlans.length) {
     alert('Nothing new to import — everything in that file is already here or unreadable.');
     return;
   }
-  if (!confirm(`Import ${convs.length} conversation${convs.length === 1 ? '' : 's'} and `
-             + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}?\n\n`
+  if (!confirm(`Import ${convs.length} conversation${convs.length === 1 ? '' : 's'}, `
+             + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}, and `
+             + `${incomingPlans.length} reading plan${incomingPlans.length === 1 ? '' : 's'}?\n\n`
              + 'Nothing you already have will be replaced.')) return;
 
   // Bodies first, index last. The index is the only thing that makes a body
@@ -2580,16 +2775,18 @@ function applyBackup(data) {
   }
 
   if (verses.length) { saved.push(...verses); saveSaved(); syncSavedTab(); }
-  if (incomingPlan && !plan) {
-    plan = incomingPlan;
-    savePlan();
+  if (incomingPlans.length) {
+    plans.push(...incomingPlans.map(p => ({ ...p, id: p.id || newConvId() })));
+    savePlans();
+    syncPlansTab();
+    if (activeTab === 'plans') renderPlans();
   }
-  renderPlanChips();
   renderConvMenu();
-  alert(`Imported ${staged.length} conversation${staged.length === 1 ? '' : 's'} and `
-      + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}.`
+  alert(`Imported ${staged.length} conversation${staged.length === 1 ? '' : 's'}, `
+      + `${verses.length} saved verse${verses.length === 1 ? '' : 's'}, and `
+      + `${incomingPlans.length} reading plan${incomingPlans.length === 1 ? '' : 's'}.`
       + (skipped ? `\n${skipped} unreadable conversation${skipped === 1 ? '' : 's'} skipped.` : '')
-      + (planSkipped ? '\nKept your existing reading plan.' : ''));
+      + (plansSkipped ? `\n${plansSkipped} plan${plansSkipped === 1 ? '' : 's'} skipped — ${PLANS_MAX} plan limit.` : ''));
 }
 
 // --- Verse of the day (empty state) ---
@@ -2676,7 +2873,8 @@ async function loadVerseOfTheDay() {
   restoreConversation(activeId);
   renderConvMenu();
   syncSavedTab();
-  if (saved.length) sheetFab.hidden = false;
+  syncPlansTab();
+  if (saved.length || plans.length) sheetFab.hidden = false;
   if (!history.length) loadVerseOfTheDay();
 })();
 </script>

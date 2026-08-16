@@ -102,10 +102,12 @@ open inline, and each answer ends with a couple of *Go deeper* chips that connec
 what you just read to a related passage.
 
 **Reading plans.** Give Shiloh a theme and a number of days and it builds a plan,
-each day a subtopic with real passages attached. Tap a day to study it; it
-marks itself done.
+each day a subtopic with real passages attached. Plans live in their own tab
+beside Retrieved and Saved — up to five at once, each one collapsible, with a
+checkbox per day. Tap a day to study it; it checks itself off. Starting a new
+conversation leaves your plans standing.
 
-![Reading plan chips above the composer](docs/img/reading-plan.png)
+![The Plans tab, beside Retrieved and Saved](docs/img/reading-plan.png)
 
 **Save verses you want to keep.** Star any passage and it lands in the Saved tab,
 where it stays independent of any conversation.
@@ -114,7 +116,7 @@ where it stays independent of any conversation.
 
 **Your study stays yours.** Conversations are saved in your browser, with search,
 rename, and Markdown export. There's also a JSON backup of everything
-(conversations, saved verses, and your reading plan) that imports back by merging,
+(conversations, saved verses, and your reading plans) that imports back by merging,
 so you never overwrite what's already there.
 
 Light and dark themes, and it works on a phone.
