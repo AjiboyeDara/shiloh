@@ -1,3 +1,14 @@
+---
+title: Shiloh
+emoji: ✝️
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 8000
+pinned: false
+license: mit
+---
+
 # Shiloh
 
 An open-source Bible study assistant that reads the text before it answers you.

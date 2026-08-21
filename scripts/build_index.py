@@ -9,6 +9,8 @@ rather than single disconnected verses.
 """
 import json
 import os
+import shutil
+import sqlite3
 import sys
 
 import chromadb
@@ -107,6 +109,32 @@ def index_collection(client, model, name, verses):
         print(f"  [{name}] indexed {min(i + batch, len(chunks))}/{len(chunks)}")
 
 
+def prune_index(index_dir=INDEX_DIR):
+    """Reclaim what a rebuild leaves behind.
+
+    `delete_collection` drops the collection's rows but leaves its vector
+    segment directory on disk, and sqlite holds onto the freed pages. So
+    every rebuild adds ~17 MB of directory plus a slab of dead pages that
+    nothing ever collects — over a couple dozen builds that reached 661 MB
+    for a 197 MB index. The `segments` table is the authority on what's
+    live; anything else in here is debris.
+    """
+    db = os.path.join(index_dir, "chroma.sqlite3")
+    if not os.path.exists(db):
+        return
+    con = sqlite3.connect(db)
+    try:
+        live = {row[0] for row in con.execute("select id from segments")}
+        for name in os.listdir(index_dir):
+            path = os.path.join(index_dir, name)
+            if os.path.isdir(path) and name not in live:
+                shutil.rmtree(path)
+                print(f"  pruned orphaned segment {name}")
+        con.execute("VACUUM")
+    finally:
+        con.close()
+
+
 def build():
     print(f"Loading embedding model ({EMBED_MODEL})... this downloads once.")
     model = SentenceTransformer(EMBED_MODEL)
@@ -124,6 +152,12 @@ def build():
         print(f"No modern translation at {MODERN_PATH}; skipping bible_modern. "
               "Run scripts/download_bible.py to fetch it (recommended: it "
               "substantially improves retrieval of thematic questions).")
+
+    # Chroma keeps the previous build's segments around; drop them here so
+    # the index doesn't grow by ~17 MB every time this script is run.
+    print("Pruning replaced segments...")
+    del client   # release the sqlite handle; VACUUM needs exclusive access
+    prune_index()
 
     print(f"Done. Index stored at {INDEX_DIR}")
 

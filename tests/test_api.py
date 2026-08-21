@@ -276,3 +276,27 @@ def test_plan_502_when_no_day_survives(monkeypatch):
 def test_plan_rejects_empty_and_oversized_themes():
     assert client.post("/api/plan", json={"theme": "", "days": 3}).status_code == 422
     assert client.post("/api/plan", json={"theme": "x" * 201, "days": 3}).status_code == 422
+
+
+# ── Free-tier exhaustion is a routine event on a public deployment ───────
+# The whole chain is under test here, not just the message: rag raises, the
+# endpoint catches it as an unknown exception, and it reaches the browser as
+# an SSE `error` event the frontend renders verbatim.
+def test_daily_quota_reaches_the_browser_as_a_sentence(monkeypatch):
+    from app import rag
+
+    class _Quota429:
+        status_code = 429
+        text = '{"error":{"details":[{"quotaId":"GenerateRequestsPerDayPerProject"}]}}'
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+    monkeypatch.setattr(rag.requests, "post", lambda *a, **kw: _Quota429())
+    monkeypatch.setattr(rag, "retrieve", lambda query, top_k=6: FAKE_PASSAGES)
+
+    with client.stream("POST", "/api/chat/stream",
+                       json={"message": "What is grace?", "provider": "gemini"}) as res:
+        body = "".join(res.iter_text())
+
+    assert "event: error" in body
+    assert "used up for today" in body
+    assert "429 Client Error" not in body   # no raw HTTP leaking through

@@ -465,6 +465,29 @@ def stream_answer(message: str, history=None, top_k: int = 6,
     return passages, gen, messages
 
 
+def _check_gemini_response(response):
+    """Raise a readable error instead of leaking the raw HTTP failure.
+
+    Gemini returns 429 for both the per-minute rate limit and the daily
+    free-tier quota, and only the body says which. They need opposite
+    advice — "wait a minute" versus "come back tomorrow" — so a single
+    "rate limited" message would be wrong half the time."""
+    if response.status_code < 400:
+        return
+    if response.status_code == 429:
+        if "PerDay" in response.text:
+            raise RuntimeError(
+                "Shiloh's free pool of answers is used up for today. Google's "
+                "free quota resets at midnight Pacific time — please try again "
+                "then."
+            )
+        raise RuntimeError(
+            "Shiloh is answering a lot of questions right now. Wait about a "
+            "minute and ask again."
+        )
+    response.raise_for_status()
+
+
 def _generate_gemini(messages, model, system=SYSTEM_PROMPT):
     response = requests.post(
         f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
@@ -482,7 +505,7 @@ def _generate_gemini(messages, model, system=SYSTEM_PROMPT):
         },
         timeout=120,
     )
-    response.raise_for_status()
+    _check_gemini_response(response)
     candidate = response.json()["candidates"][0]
     return "".join(
         part.get("text", "") for part in candidate["content"]["parts"]
@@ -576,7 +599,7 @@ def _stream_gemini(messages, model):
         timeout=120,
         stream=True,
     )
-    response.raise_for_status()
+    _check_gemini_response(response)
     for line in response.iter_lines():
         if not line or not line.startswith(b"data:"):
             continue

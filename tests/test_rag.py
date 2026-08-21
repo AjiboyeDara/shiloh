@@ -198,3 +198,46 @@ def test_plan_days_gates_harmful_themes():
     days, canned = rag.plan_days("how to make a bomb", days=3)
     assert days == []
     assert canned == rag.REFUSAL_MESSAGE
+
+
+# ── Gemini errors reach the reader as sentences, not HTTP dumps ──────────
+# The free tier is what a public deployment runs on, so exhausting it is a
+# routine event, not an exception. 429 covers two very different causes and
+# the body is the only thing that separates them.
+class _FakeResponse:
+    def __init__(self, status_code, text=""):
+        self.status_code = status_code
+        self.text = text
+
+    def raise_for_status(self):
+        raise RuntimeError(f"HTTP {self.status_code}")
+
+
+def test_gemini_daily_quota_says_come_back_tomorrow():
+    body = '{"error":{"details":[{"quotaId":"GenerateRequestsPerDayPerProject"}]}}'
+    with pytest.raises(RuntimeError, match="used up for today"):
+        rag._check_gemini_response(_FakeResponse(429, body))
+
+
+def test_gemini_per_minute_limit_says_wait_a_minute():
+    body = '{"error":{"details":[{"quotaId":"GenerateRequestsPerMinutePerProject"}]}}'
+    with pytest.raises(RuntimeError, match="[Ww]ait about a minute"):
+        rag._check_gemini_response(_FakeResponse(429, body))
+
+
+def test_gemini_other_errors_still_raise():
+    with pytest.raises(RuntimeError):
+        rag._check_gemini_response(_FakeResponse(500, "boom"))
+
+
+def test_gemini_success_never_reads_the_streaming_body():
+    """The streaming call passes stream=True, where touching .text would
+    consume the response before iter_lines() sees it."""
+    class _Unreadable:
+        status_code = 200
+
+        @property
+        def text(self):
+            raise AssertionError("read .text on a successful response")
+
+    rag._check_gemini_response(_Unreadable())
